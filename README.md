@@ -55,7 +55,6 @@ This project is licensed under the MIT License.
 
 ### Screenshots
 ![alt text](image.png)
-![Application Interface](screenshot.png)
 
 ---
 
