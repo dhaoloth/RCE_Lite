@@ -1,105 +1,62 @@
-```markdown
-# RCE Lite  
+# Repo Console Lite
 
-**Simple Repository Structure Viewer and Exporter**  
+Repo Console Lite is a lightweight desktop application for browsing repository structures and exporting their contents in a convenient format. The app allows you to open folders, view files with syntax highlighting, and export projects as Markdown files.
 
-##  Overview  
-RCE Lite is a lightweight tool designed to scan, visualize, and export the directory structure of a project or repository. It provides an organized and structured view, making it easier for developers to analyze, document, and share their project's architecture.  
+## Features
 
-##  Features  
-- **Scans directory structure** – Generates a hierarchical view of files and folders.  
-- **Exports results** – Supports exporting data in Markdown (`.md`) and JSON (`.json`) formats.  
-- **Command-line interface (CLI)** – Simple usage from the terminal.  
-- **Lightweight and fast** – No unnecessary dependencies, ensuring quick execution.  
+- **Repository Structure Viewer**: Tree-style display of files and folders.
+- **Syntax Highlighting**: Supports highlighting for various programming languages using Highlight.js.
+- **Project Export**: Save project contents to a Markdown file with extension filtering and ignored files (e.g., `node_modules`).
+- **User-Friendly**: Minimalist interface with keyboard shortcuts support.
 
-##  Installation  
-### **Prerequisites**  
-- **Node.js** (Required for execution)  
-- **Git** (For version control)  
+## Installation
 
-### **Clone the Repository**  
-```sh
-git clone https://github.com/dhaoloth/RCE_Lite.git
-cd RCE_Lite
-```
+### Build from Source
 
-##  Usage  
-Run the script to generate a structured overview of your project's directory:  
+1. Ensure you have Node.js and npm installed.
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/dhaoloth/RCE_Lite.git
+   ```
+3. Navigate to the project directory:
+   ```bash
+   cd repo-console-lite
+   ```
+4. Install dependencies:
+   ```bash
+   npm install
+   ```
+5. Run the application:
+   ```bash
+   npm start
+   ```
 
-### **Basic Command**  
-```sh
-node index.js
-```
-This will output the directory structure in a readable format.
+### Prebuilt Release
 
-### **Export to Markdown**  
-```sh
-node index.js --output structure.md
-```
-This command generates `structure.md` with the repository's structure formatted in Markdown.
+You can download the ready-to-use Windows version from the [Releases](https://github.com/dhaoloth/RCE_Lite/releases) section.
 
-### **Export to JSON**  
-```sh
-node index.js --json structure.json
-```
-Saves the directory structure as a JSON file for further processing.
+## Usage
 
-## ⚙️ Configuration  
-The tool supports optional configurations via command-line arguments:  
-- `--output <filename>` → Exports the structure as a Markdown file.  
-- `--json <filename>` → Exports the structure as a JSON file.  
-- `--depth <number>` → Limits the depth of the scanned directory.  
+1. **Open Folder**: Click the "Open Folder" button or use the `Ctrl+O` shortcut.
+2. **Browse Files**: Select a file in the tree to view its contents.
+3. **Export Project**: Click the "Export Project" button (`Ctrl+E`) to save the project contents as a Markdown file.
 
-Example:  
-```sh
-node index.js --output docs.md --depth 3
-```
-This command will export the directory structure up to **3 levels deep** into `docs.md`.
+## Technologies
 
-## 🛠 Example Output  
+- **Electron**: For cross-platform desktop application.
+- **Highlight.js**: For syntax highlighting.
+- **Font Awesome**: For interface icons.
 
-### **Terminal Output Example**  
-```
-📂 RCE_Lite  
- ├── 📄 index.js  
- ├── 📂 src  
- │   ├── 📄 parser.js  
- │   ├── 📄 exporter.js  
- ├── 📄 package.json  
- ├── 📄 README.md  
-```
+## License
 
-### **Markdown Export Example (`structure.md`)**  
-```markdown
-# Project Structure
+This project is licensed under the MIT License.
 
-- **RCE_Lite/**  
-  - **index.js**  
-  - **src/**  
-    - **parser.js**  
-    - **exporter.js**  
-  - **package.json**  
-  - **README.md**  
-```
+---
 
-### **JSON Export Example (`structure.json`)**  
-```json
-{
-  "name": "RCE_Lite",
-  "children": [
-    { "name": "index.js" },
-    {
-      "name": "src",
-      "children": [
-        { "name": "parser.js" },
-        { "name": "exporter.js" }
-      ]
-    },
-    { "name": "package.json" },
-    { "name": "README.md" }
-  ]
-}
-```
+### Screenshots
+![alt text](image.png)
+![Application Interface](screenshot.png)
 
-## 📜 License  
-RCE Lite is released under the **MIT License**.  
+---
+
+For questions or suggestions, please open an [Issue](https://github.com/dhaoloth/RCE_Lite/issues) or contact me.
