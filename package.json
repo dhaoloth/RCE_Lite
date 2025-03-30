@@ -1,0 +1,51 @@
+{
+  "name": "rce-lite",
+  "version": "1.0.0",
+  "description": "Simple Repository Structure Viewer and Exporter",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "electron-builder" 
+  },
+  "keywords": [
+    "repository",
+    "viewer",
+    "exporter",
+    "electron"
+  ],
+  "author": "dhaoloth",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "highlight.js": "^11.9.0"
+  },
+"build": {
+    "appId": "dev.app.rcelite", 
+    "productName": "RCE Lite", 
+    "directories": {
+      "output": "dist" 
+    },
+    "files": [
+      "**/*",
+      "!node_modules/@electron/get/**",
+      "!node_modules/electron/**",
+      "!node_modules/electron-builder/**",
+      "!*.{pdb,map,xml}", 
+      "!dist/", 
+      "!build/",
+      "!.*",
+      ".gitignore"
+    ],
+    "win": { 
+      "target": "nsis"
+    },
+    "nsis": { 
+        "oneClick": false, 
+        "allowToChangeInstallationDirectory": true 
+    }
+  }
+}

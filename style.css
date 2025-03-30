@@ -1,0 +1,217 @@
+:root {
+    --primary: #2c3e50;
+    --secondary: #34495e;
+    --accent: #3498db;
+    --text: #ecf0f1;
+    --text-muted: #95a5a6; /* Lighter muted text */
+    --highlight: #2980b9;
+    --success: #2ecc71;
+    --danger: #e74c3c;
+    --bg: #1f2937;
+    --pane-bg: #2a3747;
+    --header-bg: var(--primary);
+    --border-color: rgba(236, 240, 241, 0.1);
+    --code-bg: #1e1e1e;
+    --tree-indent: 1.5rem; /* Indentation amount */
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+html, body { height: 100%; overflow: hidden; background-color: var(--bg); color: var(--text); font-size: 14px; }
+.app-container { display: flex; flex-direction: column; height: 100vh; }
+
+/* Header */
+header { background-color: var(--header-bg); padding: 0.75rem 1.5rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); z-index: 10; flex-shrink: 0; }
+.logo { display: flex; align-items: center; gap: 0.7rem; font-size: 1.2rem; font-weight: 600; }
+.logo i { color: var(--accent); }
+.header-actions { display: flex; gap: 0.8rem; }
+
+/* Buttons */
+.btn { padding: 0.4rem 0.9rem; border-radius: 4px; border: 1px solid var(--secondary); background-color: var(--secondary); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; transition: all 0.2s ease; white-space: nowrap; }
+.btn:hover { background-color: var(--highlight); border-color: var(--accent); }
+.btn:active { transform: translateY(1px); opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; background-color: var(--secondary); border-color: var(--secondary); }
+.btn i { margin-right: 0.2em; } /* Adjusted margin */
+.btn-primary { background-color: var(--accent); border-color: var(--accent); }
+.btn-primary:hover { background-color: var(--highlight); border-color: var(--highlight); }
+
+/* Main Content Area */
+.main-content { display: flex; flex: 1; overflow: hidden; }
+
+/* File Tree Pane (Aside) */
+.file-tree-pane { width: 300px; min-width: 200px; background-color: var(--pane-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; resize: horizontal; }
+.pane-header { padding: 0.6rem 1rem; font-weight: 500; border-bottom: 1px solid var(--border-color); background-color: rgba(0,0,0,0.1); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#repo-root-name { opacity: 0.9; font-weight: 600; }
+.tree-container { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
+
+/* File Viewer Pane (Main) */
+.file-viewer-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; background-color: var(--code-bg); }
+.viewer-container { flex: 1; overflow: auto; position: relative; }
+#file-content { display: block; padding: 1rem; font-family: 'Consolas', 'Menlo', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; white-space: pre; min-height: 100%; tab-size: 4; -moz-tab-size: 4; }
+
+/* Placeholders */
+.placeholder-text { color: var(--text-muted); text-align: center; padding: 2rem; font-style: italic; }
+#viewer-placeholder { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+#viewer-placeholder.hidden { display: none; }
+
+/* --- Tree Item Styling (Based on Example) --- */
+.tree-container { /* Style the container from your app */
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+    /* Remove the background from the example body/container */
+}
+
+.tree-node {
+    /* This is the main container for a node and its children */
+    margin-left: 15px; /* Base indent for nesting */
+    position: relative;
+    padding-left: 25px; /* Space for the line connectors */
+}
+
+/* Vertical connector line */
+.tree-node::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--border-color, #ddd); /* Use app variable or fallback */
+    pointer-events: none;
+}
+
+/* Shorten line for the last node in a list */
+.tree-node:last-child::before {
+    height: 20px; /* Adjust as needed based on header height */
+}
+
+.tree-node-header {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px; /* Adjust padding */
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    position: relative; /* Needed for the horizontal connector */
+    margin-left: -25px; /* Pull header back to align with parent */
+    /* Use app colors */
+    color: var(--text);
+}
+
+.tree-node-header:hover {
+    background-color: rgba(255, 255, 255, 0.07); /* Use app hover color */
+}
+
+/* Horizontal connector line */
+.tree-node-header::after {
+    content: "";
+    position: absolute;
+    left: 0px; /* Align with the vertical line */
+    top: 15px; /* Vertical position - adjust to center on text/icon */
+    height: 1px;
+    width: 20px; /* Length of the horizontal line */
+    background-color: var(--border-color, #ddd); /* Use app variable or fallback */
+    pointer-events: none;
+}
+
+/* Caret (toggle arrow) */
+.tree-caret {
+    width: 20px; /* Reserve space */
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 5px; /* Space between caret and icon */
+    color: var(--text-muted, #7f8c8d);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+.tree-caret.placeholder { /* For files, to maintain alignment */
+    visibility: hidden;
+}
+
+.tree-caret .fas { /* Style the font-awesome icon inside */
+    font-size: 0.9em;
+}
+
+.tree-caret--expanded {
+    transform: rotate(90deg);
+}
+
+/* Icon (folder/file) */
+.tree-icon {
+    margin-right: 8px;
+    width: 20px; /* Reserve space */
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.tree-icon.folder {
+    color: var(--accent, #f39c12); /* App color preferred */
+}
+
+.tree-icon.file {
+    color: var(--text-muted, #95a5a6);
+}
+.tree-icon.error-icon {
+    color: var(--danger);
+    font-size: 0.9em;
+}
+
+
+/* Node Name/Content */
+.tree-node-content {
+    font-weight: normal; /* Use app default weight */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1; /* Allow name to take space */
+}
+
+/* Children container */
+.tree-node-children {
+    display: none; /* Collapsed by default */
+    padding-left: 0; /* Indentation is handled by .tree-node margin */
+}
+
+.tree-node-children--expanded {
+    display: block;
+}
+
+/* Selection Styling */
+.tree-node-header.selected {
+    background-color: var(--highlight, #e3f2fd); /* Use app selection color */
+    color: var(--text); /* Ensure text is readable */
+}
+.tree-node-header.selected .tree-icon,
+.tree-node-header.selected .tree-caret {
+    color: var(--text); /* Adjust icon color on selection if needed */
+}
+
+
+/* Error Styling */
+.tree-node-header.has-error {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+.tree-node-header.has-error:hover {
+    background-color: transparent; /* No hover on error items */
+}
+.tree-node-header.has-error .tree-icon.file,
+.tree-node-header.has-error .tree-icon.folder {
+    color: var(--danger); /* Error icon color */
+}
+/* --- End Tree Item Styling --- */
+
+/* Status Bar */
+.status-bar-bottom { background-color: var(--primary); padding: 0.4rem 1.5rem; display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border-color); flex-shrink: 0; }
+#status-message { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status-message.success { color: var(--success); }
+#status-message.error { color: var(--danger); }
+#status-message.info { color: var(--accent); }
+
+/* Line Numbers (JS approach requires this CSS) */
+code.line-numbered-js { position: relative; padding-left: 3.8em !important; }
+code.line-numbered-js .line-number { position: absolute; left: 0; width: 3em; text-align: right; opacity: 0.5; user-select: none; padding-right: 0.8em; font-size: 0.9em; color: var(--text-muted); line-height: inherit; display: inline-block; }
+code.line-numbered-js .line-number::before { content: attr(data-line); display: block; }
+code.line-numbered-js .line-content { display: inline; min-height: 1em; }

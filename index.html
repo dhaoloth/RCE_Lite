@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Updated CSP for highlight.js styles from CDN -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repo Console Lite</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Highlight.js Theme (Example: VS Code Dark) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+    <!-- Local Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-folder-tree"></i>
+                <h1>Repo Console Lite</h1>
+            </div>
+            <div class="header-actions">
+                <button class="btn" id="open-folder-btn" title="Open Folder (Ctrl+O)">
+                    <i class="fas fa-folder-open"></i>
+                    <span>Open Folder...</span>
+                </button>
+                 <button class="btn btn-primary" id="export-project-btn" title="Export Project Content (Ctrl+E)" disabled>
+                    <i class="fas fa-file-export"></i>
+                    <span>Export Project</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Left Pane: File Tree -->
+            <aside class="file-tree-pane">
+                 <div class="pane-header">
+                     <span id="repo-root-name">No Folder Open</span>
+                 </div>
+                 <div class="tree-container" id="file-tree">
+                     <p class="placeholder-text">Click "Open Folder" to view structure.</p>
+                 </div>
+            </aside>
+
+            <!-- Right Pane: File Viewer -->
+            <main class="file-viewer-pane">
+                <div class="pane-header" id="viewer-header">
+                    <span id="viewed-file-path">Select a file to view</span>
+                </div>
+                <div class="viewer-container">
+                    <pre><code id="file-content" class="hljs"></code></pre>
+                     <div id="viewer-placeholder">
+                         <p class="placeholder-text">Select a file from the tree on the left.</p>
+                     </div>
+                 </div>
+            </main>
+        </div>
+
+         <footer class="status-bar-bottom" id="status-bar">
+             <span id="status-message">Ready</span>
+             <span id="export-progress" style="display: none;"></span>
+         </footer>
+
+    </div> <!-- end app-container -->
+
+    <!-- Highlight.js Core Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Optional: Load specific languages for smaller bundle size if needed -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/xml.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/css.min.js"></script> -->
+
+    <!-- Renderer Process Logic -->
+    <script defer src="./renderer.js"></script>
+</body>
+</html>
