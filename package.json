@@ -6,7 +6,10 @@
   "scripts": {
     "start": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "electron-builder" 
+    "build": "electron-builder",
+    "build:win": "electron-builder --win nsis:ia32 nsis:x64",
+    "build:win64": "electron-builder --win --x64",
+    "build:win32": "electron-builder --win --ia32"
   },
   "keywords": [
     "repository",
@@ -21,31 +24,32 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "electron-store": "^10.0.1",
     "highlight.js": "^11.9.0"
   },
-"build": {
-    "appId": "dev.app.rcelite", 
-    "productName": "RCE Lite", 
+  "build": {
+    "appId": "dev.app.rcelite",
+    "productName": "RCE Lite",
     "directories": {
-      "output": "dist" 
+      "output": "dist"
     },
     "files": [
       "**/*",
       "!node_modules/@electron/get/**",
       "!node_modules/electron/**",
       "!node_modules/electron-builder/**",
-      "!*.{pdb,map,xml}", 
-      "!dist/", 
+      "!*.{pdb,map,xml}",
+      "!dist/",
       "!build/",
       "!.*",
       ".gitignore"
     ],
-    "win": { 
+    "win": {
       "target": "nsis"
     },
-    "nsis": { 
-        "oneClick": false, 
-        "allowToChangeInstallationDirectory": true 
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

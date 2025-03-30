@@ -1,14 +1,11 @@
-// Global state
 let currentRepoPath = null;
 let currentFileTree = null;
 let selectedFilePath = null;
+let isEditing = false;
+let originalFileContent = null;
 
-// Removed unused settings/versions variables
-
-// Regular expression to split paths cross-platform
 const PATH_SEP_REGEX = /[\\/]/;
 
-// DOM Element References
 const elements = {
     openFolderBtn: document.getElementById('open-folder-btn'),
     exportProjectBtn: document.getElementById('export-project-btn'),
@@ -16,63 +13,90 @@ const elements = {
     repoRootNameSpan: document.getElementById('repo-root-name'),
     fileViewerHeader: document.getElementById('viewer-header'),
     viewedFilePathSpan: document.getElementById('viewed-file-path'),
-    fileContentElement: document.getElementById('file-content'),
+    fileContentDisplay: document.getElementById('file-content-display'),
+    fileContentEditor: document.getElementById('file-content-editor'),
     viewerPlaceholder: document.getElementById('viewer-placeholder'),
     statusBar: document.getElementById('status-bar'),
     statusMessageSpan: document.getElementById('status-message'),
     exportProgressSpan: document.getElementById('export-progress'),
+    historyBtn: document.getElementById('history-btn'),
+    historyDropdownContent: document.getElementById('history-dropdown-content'),
+    clearHistoryLink: document.getElementById('clear-history-link'),
+    scanHomeBtn: document.getElementById('scan-home-btn'),
+    saveFileBtn: document.getElementById('save-file-btn'),
+    fileViewerPane: document.querySelector('.file-viewer-pane'),
 };
 
-// --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Renderer DOMContentLoaded');
     setupEventListeners();
-    updateUIState(); // Initial UI state (buttons disabled etc.)
+    updateUIState();
+    loadHistory();
 });
 
-// --- Event Listeners Setup ---
 function setupEventListeners() {
-    // IPC Listeners (from Main)
-    // window.electronAPI.on('initial-data-loaded', handleInitialData); // Removed - Not used
-    window.electronAPI.on('set-active-repo', setActiveRepo);      // Set repo from main (e.g., on load)
-    window.electronAPI.on('show-error', handleShowError);         // Display errors from main
-    window.electronAPI.on('trigger-open-folder', handleOpenFolderClick); // Menu action
-    window.electronAPI.on('trigger-export-project', handleExportClick); // Menu action
+    window.electronAPI.on('show-error', handleShowError);
+    window.electronAPI.on('trigger-open-folder', handleOpenFolderClick);
+    window.electronAPI.on('trigger-export-project', handleExportClick);
+    window.electronAPI.on('trigger-scan-home', handleScanDirsClick);
+    window.electronAPI.on('trigger-clear-history', handleClearHistory);
 
-    // UI Listeners
     if (elements.openFolderBtn) {
         elements.openFolderBtn.addEventListener('click', handleOpenFolderClick);
-        console.log("DEBUG: Attached click listener to Open Folder button."); // Confirmation Log
-    } else {
-        console.error("ERROR: Open Folder button element not found in DOM!");
     }
     if (elements.exportProjectBtn) {
         elements.exportProjectBtn.addEventListener('click', handleExportClick);
     }
     if (elements.fileTreeContainer) {
-        // Use event delegation for tree items
         elements.fileTreeContainer.addEventListener('click', handleTreeClick);
+        elements.fileTreeContainer.addEventListener('dblclick', handleTreeDoubleClick);
     }
-     // Global key listeners (optional)
-     document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { handleOpenFolderClick(); }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'e') { if(!elements.exportProjectBtn?.disabled) handleExportClick(); }
+     if (elements.clearHistoryLink) {
+        elements.clearHistoryLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleClearHistory();
+             elements.historyDropdownContent.style.display = 'none';
+             setTimeout(() => {
+                 if (elements.historyDropdownContent) elements.historyDropdownContent.style.display = '';
+             }, 100);
+        });
+    }
+     if (elements.historyDropdownContent) {
+         elements.historyDropdownContent.addEventListener('click', handleHistoryItemClick);
+     }
+    if (elements.scanHomeBtn) {
+        elements.scanHomeBtn.addEventListener('click', handleScanDirsClick);
+    }
+     if (elements.saveFileBtn) {
+         elements.saveFileBtn.addEventListener('click', handleSaveFile);
+     }
+     if (elements.fileContentEditor) {
+         elements.fileContentEditor.addEventListener('input', handleEditorInput);
+     }
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenFolderClick(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); if (!elements.exportProjectBtn?.disabled) handleExportClick(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); elements.historyBtn?.focus(); } // Focus to open dropdown
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+             if (isEditing && !elements.saveFileBtn?.disabled) {
+                 e.preventDefault();
+                 handleSaveFile();
+             }
+        }
+        if (e.key === 'Escape' && isEditing) {
+            disableEditing(true); // Revert changes on Escape
+        }
      });
 }
-
-// --- IPC Handlers ---
-// function handleInitialData(...) { ... } // Removed - Not used
 
 function handleShowError(title, message) {
     console.error(`Backend Error: ${title} - ${message}`);
     updateStatus(`Error: ${message}`, 'error', 5000);
-    // Could show a more prominent modal if desired
 }
 
-// --- Core Logic ---
-
 async function handleOpenFolderClick() {
-    console.log('[handleOpenFolderClick] Function called.'); // Log 1: Function start
+    console.log('[handleOpenFolderClick] Function called.');
     updateStatus('Opening folder dialog...', 'info');
     if (!window.electronAPI || typeof window.electronAPI.invoke !== 'function') {
          console.error("ERROR: window.electronAPI.invoke is not available! Check preload script.");
@@ -81,124 +105,99 @@ async function handleOpenFolderClick() {
     }
 
     try {
-        console.log("[handleOpenFolderClick] Trying to invoke 'dialog:openDirectory'..."); // Log 2: Before invoke
         const result = await window.electronAPI.invoke('dialog:openDirectory');
-
-        // Log 3: Log the raw result object immediately after invoke returns
         console.log('[handleOpenFolderClick] Invoke result received:', JSON.stringify(result, null, 2));
 
-        // === Check 1: Successful Path Received ===
-        // Ensure result exists, success is true, and data is a non-empty string
         if (result && result.success === true && typeof result.data === 'string' && result.data.length > 0) {
-            console.log(`[handleOpenFolderClick] Success! Path selected: ${result.data}`); // Log 4a: Success path
-            await setActiveRepo(result.data); // Call next step
+            console.log(`[handleOpenFolderClick] Success! Path selected: ${result.data}`);
+            await setActiveRepo(result.data);
 
-        // === Check 2: Explicit Failure from Main Process ===
-        // Ensure result exists, success is false, and there's an error object
         } else if (result && result.success === false && result.error && result.error.message) {
-            console.error(`[handleOpenFolderClick] Failed (reported by main): ${result.error.message}`, result.error); // Log 4b: Failure message
+            console.error(`[handleOpenFolderClick] Failed (reported by main): ${result.error.message}`, result.error);
             updateStatus(`Failed to open: ${result.error.message}`, 'error', 5000);
 
-        // === Check 3: Cancellation or Other Unsuccessful Cases ===
-        // This catches cases like:
-        // - User cancelled the dialog (main might return { success: true, data: null } or { success: false } depending on implementation)
-        // - Main process returned an unexpected structure
         } else {
-             // Check specifically for cancellation which we expect to be { success: true, data: null }
              if (result && result.success === true && result.data === null) {
-                 console.log('[handleOpenFolderClick] Folder selection cancelled by user.'); // Log 4c-1: Cancellation
-                 updateStatus('Ready', 'info'); // Reset status
+                 console.log('[handleOpenFolderClick] Folder selection cancelled by user.');
+                 updateStatus('Ready', 'info');
              } else {
-                 console.warn('[handleOpenFolderClick] Result structure unexpected or failed without error message.', 'Received result:', result); // Log 4c-2: Other unexpected
+                 console.warn('[handleOpenFolderClick] Result structure unexpected or failed without error message.', 'Received result:', result);
                  updateStatus('Folder selection failed or cancelled.', 'info');
              }
         }
 
     } catch (error) {
-        // This catches errors *in the renderer* during the invoke call itself (e.g., channel not found) or during await/processing
-        console.error('[handleOpenFolderClick] CATCH BLOCK - Error during invoke/processing in renderer:', error); // Log 5: Renderer error
+        console.error('[handleOpenFolderClick] CATCH BLOCK - Error during invoke/processing in renderer:', error);
         updateStatus(`Client-side error: ${error.message}`, 'error');
     }
 }
-
 
 async function setActiveRepo(repoPath) {
     if (!repoPath) {
         console.error("[setActiveRepo] Received empty repoPath. Aborting.");
         return;
     }
-    // Make sure repoPath is treated as a string
-    repoPath = String(repoPath).replace(/[\\/]+$/, ''); // Normalize path, ensure it's string
+    repoPath = String(repoPath).replace(/[\\/]+$/, '');
 
-    console.log(`[setActiveRepo] Setting active repo: ${repoPath}`); // Log the path being set
+    console.log(`[setActiveRepo] Setting active repo: ${repoPath}`);
     updateStatus(`Loading folder: ${repoPath}...`, 'info');
+
+    addPathToHistory(repoPath);
 
     if (elements.repoRootNameSpan) {
         elements.repoRootNameSpan.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
         elements.repoRootNameSpan.title = repoPath;
     }
-    // --- Set the global variable ---
     currentRepoPath = repoPath;
-    // -----------------------------
-    selectedFilePath = null; // Clear file selection
+    selectedFilePath = null;
     clearFileViewer();
-    updateUIState(); // Enable export button etc.
+    updateUIState();
 
-    // --- Verify currentRepoPath just before invoking ---
-    console.log(`[setActiveRepo] Invoking fs:readDirectoryStructure with currentRepoPath: "${currentRepoPath}" (Type: ${typeof currentRepoPath})`);
+    console.log(`[setActiveRepo] Invoking fs:readDirectoryStructure with currentRepoPath: "${currentRepoPath}"`);
 
     if (!currentRepoPath) {
          console.error("[setActiveRepo] CRITICAL: currentRepoPath became null/empty before invoke!");
          updateStatus('Internal Error: Path lost', 'error');
          return;
     }
-    // ---------------------------------------------------
-
 
     try {
-        // --- Ensure the correct variable is passed HERE ---
         const result = await window.electronAPI.invoke('fs:readDirectoryStructure', currentRepoPath);
-        // -----------------------------------------------
-
-        console.log("[setActiveRepo] fs:readDirectoryStructure result:", JSON.stringify(result, null, 2)); // Log the result
+        console.log("[setActiveRepo] fs:readDirectoryStructure result received");
 
         if (result.success) {
-            currentFileTree = result.data; // This is the root node object
+            currentFileTree = result.data;
 
-            // Clear previous tree
             if (elements.fileTreeContainer) {
-                elements.fileTreeContainer.innerHTML = '';
+                 elements.fileTreeContainer.innerHTML = '';
+                 elements.fileTreeContainer.classList.remove('scan-results-container');
             } else {
                 console.error("[setActiveRepo] Tree container element not found!");
-                return; // Cannot render
+                return;
             }
 
-            // Check if the root node (returned data) exists and has children
             if (currentFileTree && currentFileTree.children && currentFileTree.children.length > 0) {
-                 // Render each child of the root directory into the container
                  currentFileTree.children.forEach(childNode => {
-                    renderTree(childNode, elements.fileTreeContainer); // Call new render function
+                    renderTree(childNode, elements.fileTreeContainer);
                  });
                  console.log("[setActiveRepo] Tree rendered successfully.");
             } else if (currentFileTree) {
-                 // Handle empty directory case
                  elements.fileTreeContainer.innerHTML = '<p class="placeholder-text">Folder is empty or contains only ignored items.</p>';
                  console.log("[setActiveRepo] Rendered empty folder message.");
             } else {
-                // Handle case where data is unexpectedly null/undefined
-                elements.fileTreeContainer.innerHTML = '<p class="placeholder-text error-text">Could not load folder data (Result data null/undefined).</p>';
+                elements.fileTreeContainer.innerHTML = '<p class="placeholder-text error-text">Could not load folder data.</p>';
                  console.warn("[setActiveRepo] currentFileTree is null/undefined after successful invoke.", result.data);
             }
 
             updateStatus('Folder loaded.', 'success', 2000);
-        } else { // Handle failure from IPC for fs:readDirectoryStructure
+        } else {
             console.error('[setActiveRepo] Failed to read directory structure (IPC Error):', result.error);
-            updateStatus(`Error loading folder: ${result.error?.message || 'Unknown error'}`, 'error'); // Use optional chaining
+            updateStatus(`Error loading folder: ${result.error?.message || 'Unknown error'}`, 'error');
             if (elements.fileTreeContainer) {
                 elements.fileTreeContainer.innerHTML = `<p class="placeholder-text error-text">Error loading structure: ${escapeHtml(result.error?.message || 'Unknown error')}</p>`;
             }
         }
-    } catch (error) { // Handle error during IPC invoke itself
+    } catch (error) {
         console.error('[setActiveRepo] CATCH BLOCK - Error during IPC invoke for fs:readDirectoryStructure:', error);
         updateStatus(`IPC Invoke Error: ${error.message}`, 'error');
          if (elements.fileTreeContainer) {
@@ -210,75 +209,62 @@ async function setActiveRepo(repoPath) {
 function renderTree(node, parentElement) {
     const treeNode = document.createElement('div');
     treeNode.className = 'tree-node';
-    // Add data attributes needed by handleTreeClick to the node itself might be easier
     treeNode.dataset.path = node.path;
     treeNode.dataset.type = node.type;
     if (node.error) {
         treeNode.dataset.error = node.error;
-        treeNode.title = node.error; // Tooltip for error
+        treeNode.title = node.error;
     }
 
-
-    // --- Header (Clickable Row) ---
     const header = document.createElement('div');
     header.className = 'tree-node-header';
     if (node.error) {
         header.classList.add('has-error');
     }
 
-    // --- Caret (Toggle) or Placeholder ---
     const caret = document.createElement('div');
     caret.className = 'tree-caret';
     if (node.type === 'directory') {
-        // Only add icon if there are children to expand/collapse
         if (node.children && node.children.length > 0) {
              caret.innerHTML = '<i class="fas fa-caret-right"></i>';
         } else {
-             caret.classList.add('placeholder'); // Keep space for alignment
+             caret.classList.add('placeholder');
         }
     } else {
-        caret.classList.add('placeholder'); // Keep space for alignment
+        caret.classList.add('placeholder');
     }
     header.appendChild(caret);
 
-    // --- Icon ---
     const icon = document.createElement('i');
-    icon.className = 'tree-icon'; // Base class
+    icon.className = 'tree-icon';
     if (node.type === 'directory') {
         icon.classList.add('folder', 'fas', 'fa-folder');
     } else if (node.type === 'file') {
         icon.classList.add('file', 'fas', 'fa-file');
-    } else { // symlink, other...
-        icon.classList.add('file', 'fas', 'fa-link'); // Example for symlink
+    } else {
+        icon.classList.add('file', 'fas', 'fa-link');
     }
     header.appendChild(icon);
 
-    // --- Content (Name) ---
     const content = document.createElement('span');
     content.className = 'tree-node-content';
     content.textContent = node.name;
     header.appendChild(content);
 
-    // --- Error Icon (if applicable) ---
      if (node.error) {
         const errorIcon = document.createElement('i');
         errorIcon.className = 'tree-icon error-icon fas fa-exclamation-triangle';
-        errorIcon.style.marginLeft = '5px'; // Add some space
+        errorIcon.style.marginLeft = '5px';
         header.appendChild(errorIcon);
      }
 
-    // Add header to the node container
     treeNode.appendChild(header);
 
-
-    // --- Children ---
     if (node.type === 'directory' && node.children && node.children.length > 0) {
         const childrenContainer = document.createElement('div');
-        // Start collapsed
         childrenContainer.className = 'tree-node-children';
-
         node.children.forEach(child => {
-            renderTree(child, childrenContainer); // Recursive call
+            renderTree(child, childrenContainer);
         });
         treeNode.appendChild(childrenContainer);
     }
@@ -286,17 +272,11 @@ function renderTree(node, parentElement) {
     parentElement.appendChild(treeNode);
 }
 
-// --- New handleTreeClick (Replaces old one) ---
-// Uses event delegation on the main tree container
-
 function handleTreeClick(event) {
-    // Find the header element that was clicked on, or inside of
     const header = event.target.closest('.tree-node-header');
 
-    // Ignore clicks outside of headers or on error items
     if (!header || header.classList.contains('has-error')) {
         if (header && header.classList.contains('has-error')) {
-             // Optionally show error message from title or data attribute
              const nodeElement = header.closest('.tree-node');
              if (nodeElement && nodeElement.dataset.error) {
                  updateStatus(`Error: ${nodeElement.dataset.error}`, 'error', 4000);
@@ -306,145 +286,150 @@ function handleTreeClick(event) {
     }
 
     const nodeElement = header.closest('.tree-node');
-    if (!nodeElement) return; // Should not happen if header exists
+    if (!nodeElement) return;
 
     const path = nodeElement.dataset.path;
     const type = nodeElement.dataset.type;
 
-    // Toggle Expansion for Directories
     if (type === 'directory') {
         const childrenContainer = nodeElement.querySelector(':scope > .tree-node-children');
-        const caret = header.querySelector('.tree-caret:not(.placeholder)'); // Find the actual caret
+        const caret = header.querySelector('.tree-caret:not(.placeholder)');
 
-        if (childrenContainer && caret) { // Check if it's expandable
+        if (childrenContainer && caret) {
             const isExpanded = childrenContainer.classList.toggle('tree-node-children--expanded');
             caret.classList.toggle('tree-caret--expanded', isExpanded);
         }
-        // Note: We don't select directories in this app currently
     }
 
-    // Select File
     if (type === 'file') {
-        selectFile(path); // Call your existing function
-
-        // Update selection style
+        selectFile(path);
         elements.fileTreeContainer.querySelectorAll('.tree-node-header.selected').forEach(el => el.classList.remove('selected'));
         header.classList.add('selected');
     }
 }
 
+function handleTreeDoubleClick(event) {
+    const header = event.target.closest('.tree-node-header');
+    if (!header || header.classList.contains('has-error')) {
+        return;
+    }
+    const nodeElement = header.closest('.tree-node');
+    if (!nodeElement) return;
+
+    const type = nodeElement.dataset.type;
+    const path = nodeElement.dataset.path;
+
+    if (type === 'file') {
+        if (selectedFilePath !== path) {
+             selectFile(path).then(() => {
+                enableEditing();
+             });
+        } else {
+             enableEditing();
+        }
+    }
+}
 
 async function selectFile(filePath) {
     if (!filePath) return;
     console.log(`Selecting file: ${filePath}`);
-    selectedFilePath = filePath;
-    clearFileViewer(); // Clear previous content and show placeholder
-    const filename = filePath.split(PATH_SEP_REGEX).pop();
-    updateStatus(`Loading file: ${filename}`, 'info');
 
-    if (elements.viewedFilePathSpan) {
-        // Ensure currentRepoPath ends with a separator for clean replacement
+     if (isEditing && elements.fileContentEditor.value !== originalFileContent) {
+         if (!confirm('You have unsaved changes. Discard changes and open new file?')) {
+             return;
+         }
+     }
+     disableEditing(false);
+
+    selectedFilePath = filePath;
+    const filename = filePath.split(PATH_SEP_REGEX).pop();
+    updateStatus(`Loading file: ${filename}...`, 'info');
+
+    if (elements.viewedFilePathSpan && currentRepoPath) {
         const repoPathWithSep = currentRepoPath.endsWith('/') || currentRepoPath.endsWith('\\')
             ? currentRepoPath
             : currentRepoPath + (currentRepoPath.includes('/') ? '/' : '\\');
-        elements.viewedFilePathSpan.textContent = filePath.replace(repoPathWithSep, ''); // Show relative path
-        elements.viewedFilePathSpan.title = filePath; // Show full path on hover
+        elements.viewedFilePathSpan.textContent = filePath.replace(repoPathWithSep, '');
+        elements.viewedFilePathSpan.title = filePath;
+    } else if (elements.viewedFilePathSpan) {
+         elements.viewedFilePathSpan.textContent = filename;
+         elements.viewedFilePathSpan.title = filePath;
     }
-    if (elements.viewerPlaceholder) elements.viewerPlaceholder.classList.add('hidden'); // Hide placeholder
-    if (!elements.fileContentElement) {
-         console.error("File content element not found!");
-         updateStatus('UI Error: Cannot display file', 'error');
-         return;
+
+    if (elements.viewerPlaceholder) elements.viewerPlaceholder.classList.add('hidden');
+    if (!elements.fileContentDisplay || !elements.fileContentEditor) {
+        console.error("File content elements not found!");
+        updateStatus('UI Error: Cannot display file', 'error');
+        return;
     }
+
+    elements.fileContentDisplay.style.display = 'block';
+    elements.fileContentEditor.style.display = 'none';
+    elements.fileViewerPane?.classList.remove('editing');
+    elements.fileContentDisplay.innerHTML = '';
+    elements.fileContentEditor.value = '';
+
 
     try {
-        console.log(`Invoking fs:readFileContent for: ${filePath}`);
         const result = await window.electronAPI.invoke('fs:readFileContent', filePath);
-        console.log('fs:readFileContent result:', result); // Log the raw result
+        console.log('fs:readFileContent result received:', !!result?.data);
 
         if (result.success) {
-            const content = result.data;
-            console.log(`File content loaded successfully (${content.length} chars). Highlighting...`);
+            const content = result.data ?? "";
+            console.log(`File content loaded successfully (${content?.length ?? 0} chars).`);
+            originalFileContent = content;
 
-            let highlightedCode = escapeHtml(content); // Default to escaped content
+            let highlightedCode = escapeHtml(content);
 
-            // --- Add Robust Check for hljs ---
-            if (window.hljs && typeof window.hljs.getLanguage === 'function' && typeof window.hljs.highlight === 'function') {
-                // Determine language based on extension (basic)
+            if (window.hljs && typeof window.hljs.highlight === 'function') {
                 const extension = filePath.split('.').pop()?.toLowerCase() || '';
-                let detectedLanguage = window.hljs.getLanguage(extension) ? extension : null;
+                const language = window.hljs.getLanguage(extension) ? extension : null;
 
-                // Fallback for common languages if direct extension match fails
-                if (!detectedLanguage) {
-                     if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) detectedLanguage = 'javascript';
-                     else if (['ts', 'tsx'].includes(extension)) detectedLanguage = 'typescript';
-                     else if (['py'].includes(extension)) detectedLanguage = 'python';
-                     else if (['java'].includes(extension)) detectedLanguage = 'java';
-                     else if (['html', 'htm', 'xml'].includes(extension)) detectedLanguage = 'xml';
-                     else if (['css', 'scss', 'sass', 'less'].includes(extension)) detectedLanguage = 'css';
-                     else if (['json'].includes(extension)) detectedLanguage = 'json';
-                     else if (['md'].includes(extension)) detectedLanguage = 'markdown';
-                     else if (['sh', 'bash', 'zsh'].includes(extension)) detectedLanguage = 'bash';
-                     else if (['gitignore', 'npmrc', 'editorconfig'].includes(filename.toLowerCase())) detectedLanguage = 'plaintext'; // Treat common dotfiles as text
-                     else if (['dockerfile', 'makefile'].includes(filename.toLowerCase())) detectedLanguage = 'makefile'; // Or 'dockerfile' if specific lang exists
-                     // Add more fallbacks as needed
-                }
-
-
-                if (detectedLanguage) {
-                    console.log(`Attempting highlight with language: ${detectedLanguage}`);
+                if (language) {
                     try {
-                        // Use highlight function directly via window object
-                        highlightedCode = window.hljs.highlight(content, { language: detectedLanguage, ignoreIllegals: true }).value; // Added window.
-                        console.log("Highlighting successful.");
+                        highlightedCode = window.hljs.highlight(content, { language: language, ignoreIllegals: true }).value;
+                        console.log(`Highlighting successful for ${language}.`);
                     } catch (e) {
-                        console.warn(`Highlighting error for ${detectedLanguage}, falling back to plain text:`, e);
-                        // highlightedCode is already set to escapedHtml(content)
+                        console.warn(`Highlighting error for ${language}, falling back:`, e);
                     }
                 } else {
-                    console.log("No specific language detected, displaying plain text.");
-                     // highlightedCode is already set to escapedHtml(content)
+                    console.log("No specific language detected for highlighting.");
                 }
             } else {
-                // --- Log error if hljs is not ready ---
-                console.error("Highlight.js (hljs) not available or not fully loaded yet.");
-                // Keep highlightedCode as escapedHtml(content)
+                console.error("Highlight.js (hljs) not available.");
             }
-            // --- End of hljs check ---
 
+            elements.fileContentDisplay.innerHTML = highlightedCode;
+            elements.fileContentEditor.value = content;
 
-            elements.fileContentElement.innerHTML = highlightedCode; // Set the potentially HTML content
+            console.log("File loaded. Double-click to enable editing mode.");
             updateStatus(`File loaded: ${filename}`, 'success', 2000);
 
-        } else { // Handle read file failure
-             console.error(`Failed to read file content:`, result.error);
-             elements.fileContentElement.innerHTML = `<span class="error-text">Error loading file: ${escapeHtml(result.error?.message || 'Unknown error')}</span>`;
-             updateStatus(`Error loading file: ${filename}`, 'error');
+        } else {
+            const errorMessage = result.error?.message || 'Unknown error';
+            console.error(`Failed to read file content:`, result.error);
+            elements.fileContentDisplay.innerHTML = `<span class="error-text">Error loading file: ${escapeHtml(errorMessage)}</span>`;
+            updateStatus(`Error loading file: ${filename} - ${errorMessage}`, 'error');
         }
-    } catch (error) { // Handle IPC error
-        // Check if the error message indicates hljs issue from IPC itself (less likely now)
-         if (error && error.message && error.message.includes('hljs is not defined')) {
-             console.error("IPC Error likely related to hljs initialization timing:", error);
-             elements.fileContentElement.innerHTML = `<span class="error-text">Error initializing highlighter. Please try selecting the file again.</span>`;
-             updateStatus(`Error initializing highlighter`, 'error');
-         } else {
-            console.error(`IPC Error reading file "${filePath}":`, error);
-            if (elements.fileContentElement) {
-                elements.fileContentElement.innerHTML = `<span class="error-text">IPC Error: ${escapeHtml(error.message)}</span>`;
-            }
-            updateStatus(`IPC Error loading file`, 'error');
-         }
+    } catch (error) {
+        console.error(`IPC Error reading file "${filePath}":`, error);
+        if (elements.fileContentDisplay) {
+            elements.fileContentDisplay.innerHTML = `<span class="error-text">IPC Error: ${escapeHtml(error.message)}</span>`;
+        }
+        updateStatus(`IPC Error loading file`, 'error');
     }
 }
 
 function clearFileViewer() {
-    if (elements.fileContentElement) elements.fileContentElement.innerHTML = '';
+    disableEditing(false);
+     if (elements.fileContentDisplay) elements.fileContentDisplay.innerHTML = '';
+     if (elements.fileContentEditor) elements.fileContentEditor.value = '';
     if (elements.viewedFilePathSpan) elements.viewedFilePathSpan.textContent = 'Select a file to view';
     if (elements.viewerPlaceholder) elements.viewerPlaceholder.classList.remove('hidden');
     selectedFilePath = null;
+     originalFileContent = null;
 }
 
-// --- Export Logic ---
 async function handleExportClick() {
     if (!currentRepoPath || elements.exportProjectBtn?.disabled) return;
     console.log('Starting project export...');
@@ -453,47 +438,38 @@ async function handleExportClick() {
     if (elements.exportProgressSpan) elements.exportProgressSpan.style.display = 'inline';
     if (elements.exportProgressSpan) elements.exportProgressSpan.textContent = '(Exporting...)';
 
-
     try {
         const result = await window.electronAPI.invoke('project:export', currentRepoPath);
         if (result.success) {
             updateStatus(result.data.message, 'success', 6000);
             console.log("Export successful:", result.data.message);
         } else {
-            // Need a way to show errors more prominently if desired
             updateStatus(`Export failed: ${result.error.message}`, 'error', 6000);
-            console.error('Export Failed:', result.error); // Log full error
-             // Placeholder for a more user-facing error display if needed later
-             // showErrorModal('Export Failed', result.error);
+            console.error('Export Failed:', result.error);
         }
     } catch (error) {
         console.error('IPC Error during export:', error);
         updateStatus(`Export IPC Error: ${error.message}`, 'error');
-        // Placeholder for a more user-facing error display if needed later
-        // showErrorModal('Export Communication Error', error);
     } finally {
-        if (elements.exportProjectBtn) elements.exportProjectBtn.disabled = !currentRepoPath; // Re-enable based on repo path
+        if (elements.exportProjectBtn) elements.exportProjectBtn.disabled = !currentRepoPath;
         if (elements.exportProgressSpan) elements.exportProgressSpan.style.display = 'none';
     }
 }
 
-
-// --- UI State & Helpers ---
 function updateUIState() {
-    // Enable/disable buttons based on whether a repo is loaded
     const repoLoaded = !!currentRepoPath;
     if (elements.exportProjectBtn) {
         elements.exportProjectBtn.disabled = !repoLoaded;
     }
-    // Add other UI state updates here if needed
 }
 
 function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
     return unsafe.replace(/&/g, "&amp;")
                  .replace(/</g, "&lt;")
                  .replace(/>/g, "&gt;")
                  .replace(/"/g, "&quot;")
-                 .replace(/'/g, "&#39;");
+                 .replace(/'/g, "&#039;");
 }
 
 let statusTimeout;
@@ -501,10 +477,10 @@ function updateStatus(message, type = 'info', duration = null) {
     if (!elements.statusMessageSpan) return;
     clearTimeout(statusTimeout);
     elements.statusMessageSpan.textContent = message;
-    elements.statusMessageSpan.className = `status-message ${type}`; // Use type as class directly
+    elements.statusMessageSpan.className = `status-message ${type}`;
     if (duration) {
         statusTimeout = setTimeout(() => {
-            if (elements.statusMessageSpan.textContent === message) { // Avoid clearing newer messages
+            if (elements.statusMessageSpan.textContent === message) {
                  elements.statusMessageSpan.textContent = 'Ready';
                  elements.statusMessageSpan.className = 'status-message';
             }
@@ -512,4 +488,242 @@ function updateStatus(message, type = 'info', duration = null) {
     }
 }
 
-// Removed populateVersionInfo as it's not used
+async function loadHistory() {
+    if (!elements.historyDropdownContent) return;
+    try {
+        const result = await window.electronAPI.invoke('history:get');
+        if (result.success) {
+             renderHistory(result.data);
+        } else {
+            console.error("Failed to load history (IPC):", result.error);
+             updateStatus('Error loading history.', 'error');
+        }
+    } catch (error) {
+        console.error("Failed to load history (Catch):", error);
+        updateStatus('Error loading history.', 'error');
+    }
+}
+
+function renderHistory(history) {
+     if (!elements.historyDropdownContent) return;
+     const list = elements.historyDropdownContent;
+
+     const items = list.querySelectorAll('a:not(#clear-history-link)');
+     items.forEach(item => item.remove());
+     const hr = list.querySelector('hr');
+     const placeholder = list.querySelector('.placeholder-text');
+
+     if (placeholder) placeholder.style.display = (history?.length ?? 0) === 0 ? 'block' : 'none';
+     if (hr) hr.style.display = (history?.length ?? 0) === 0 ? 'none' : 'block';
+
+     if (history && history.length > 0) {
+         history.forEach(repoPath => {
+             const listItem = document.createElement('a');
+             listItem.href = '#';
+             listItem.dataset.path = repoPath;
+             listItem.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
+             listItem.title = repoPath;
+             if (hr) {
+                  list.insertBefore(listItem, hr);
+             } else {
+                  list.appendChild(listItem);
+             }
+         });
+     }
+}
+
+async function addPathToHistory(repoPath) {
+     if (!repoPath) return;
+     try {
+         await window.electronAPI.invoke('history:add', repoPath);
+         loadHistory();
+     } catch (error) {
+         console.error(`Failed to add path ${repoPath} to history:`, error);
+         updateStatus('Error updating history.', 'error');
+     }
+ }
+
+ async function handleClearHistory() {
+     if (!confirm('Are you sure you want to clear the repository history?')) return;
+     try {
+         const result = await window.electronAPI.invoke('history:clear');
+         if(result.success) {
+            renderHistory([]);
+            updateStatus('History cleared.', 'success', 2000);
+         } else {
+             console.error("Failed to clear history (IPC):", result.error);
+             updateStatus('Error clearing history.', 'error');
+         }
+     } catch (error) {
+         console.error("Failed to clear history (Catch):", error);
+         updateStatus('Error clearing history.', 'error');
+     }
+ }
+
+ function handleHistoryItemClick(event) {
+     event.preventDefault();
+     const target = event.target.closest('a[data-path]');
+     if (target && target.dataset.path) {
+         const repoPath = target.dataset.path;
+         console.log(`History item clicked: ${repoPath}`);
+         setActiveRepo(repoPath);
+
+         if (elements.historyDropdownContent) {
+              elements.historyDropdownContent.style.display = 'none';
+             setTimeout(() => {
+                  if (elements.historyDropdownContent) elements.historyDropdownContent.style.display = '';
+             }, 150);
+         }
+     }
+ }
+
+async function handleScanDirsClick() {
+    console.log('Scan Dirs button clicked.');
+    updateStatus('Selecting home directory...', 'info');
+    try {
+        const homeDirResult = await window.electronAPI.invoke('dialog:selectHomeDirectory');
+         if (homeDirResult.success && homeDirResult.data) {
+             const homePath = homeDirResult.data;
+             updateStatus(`Scanning ${homePath} for repositories...`, 'info');
+             const findResult = await window.electronAPI.invoke('fs:findRepositories', homePath);
+             if (findResult.success) {
+                 displayScanResults(findResult.data);
+             } else {
+                 console.error("Failed to find repositories:", findResult.error);
+                 updateStatus(`Scan failed: ${findResult.error.message}`, 'error');
+             }
+         } else if (homeDirResult.success && !homeDirResult.data) {
+            updateStatus('Scan cancelled.', 'info');
+         } else {
+            console.error("Failed to select home directory:", homeDirResult.error);
+            updateStatus(`Error selecting directory: ${homeDirResult.error.message}`, 'error');
+         }
+    } catch (error) {
+        console.error("Error during repository scan:", error);
+        updateStatus(`Scan error: ${error.message}`, 'error');
+    }
+}
+
+function displayScanResults(repoPaths) {
+    if (!repoPaths || repoPaths.length === 0) {
+        updateStatus('No repositories found in the selected directory.', 'info', 4000);
+        return;
+    }
+
+    updateStatus(`Found ${repoPaths.length} potential repositories. Displaying...`, 'success', 3000);
+
+    if (elements.fileTreeContainer) {
+        elements.fileTreeContainer.innerHTML = '';
+        elements.fileTreeContainer.classList.add('scan-results-container');
+
+        const list = document.createElement('ul');
+        repoPaths.forEach(repoPath => {
+            const item = document.createElement('li');
+            item.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
+            item.title = `Click to open ${repoPath}`;
+            item.dataset.path = repoPath;
+            item.addEventListener('click', () => {
+                elements.fileTreeContainer.classList.remove('scan-results-container');
+                setActiveRepo(repoPath);
+            });
+            list.appendChild(item);
+        });
+        elements.fileTreeContainer.appendChild(list);
+        if (elements.repoRootNameSpan) elements.repoRootNameSpan.textContent = "Scan Results";
+        clearFileViewer();
+    }
+    console.log("Found Repositories:", repoPaths);
+}
+
+function enableEditing() {
+    if (!selectedFilePath || !elements.fileViewerPane || !elements.fileContentEditor || !elements.fileContentDisplay) return;
+
+    const displayContent = elements.fileContentDisplay?.innerHTML || '';
+    if(displayContent.includes('Error loading file') || displayContent.includes('Cannot display file') || displayContent.includes('File too large to view')) {
+        updateStatus('Cannot edit this file type, file with errors, or large file.', 'error', 3000);
+        return;
+    }
+
+     console.log('Enabling edit mode for:', selectedFilePath);
+     isEditing = true;
+     originalFileContent = elements.fileContentEditor.value;
+     elements.fileViewerPane.classList.add('editing');
+     elements.fileContentEditor.style.display = 'block';
+     elements.fileContentDisplay.style.display = 'none';
+     elements.fileContentEditor.focus();
+     elements.saveFileBtn.style.display = 'inline-flex';
+     elements.saveFileBtn.disabled = true;
+     updateStatus(`Editing: ${selectedFilePath.split(PATH_SEP_REGEX).pop()}`, 'info');
+}
+
+function disableEditing(revert = false) {
+     if (!elements.fileViewerPane || !elements.fileContentEditor) return;
+     console.log('Disabling edit mode.');
+     isEditing = false;
+     if (revert && originalFileContent !== null) {
+         elements.fileContentEditor.value = originalFileContent;
+     }
+     originalFileContent = null;
+     elements.fileViewerPane.classList.remove('editing');
+     elements.saveFileBtn.style.display = 'none';
+     elements.fileContentEditor.style.display = 'none';
+     elements.fileContentDisplay.style.display = 'block';
+
+     // Restore status only if not currently showing an error/success message briefly
+     if(elements.statusMessageSpan && !elements.statusMessageSpan.classList.contains('success') && !elements.statusMessageSpan.classList.contains('error')){
+        updateStatus('Ready', 'info');
+     }
+}
+
+function handleEditorInput() {
+    if (isEditing && elements.saveFileBtn && elements.fileContentEditor) {
+        elements.saveFileBtn.disabled = (elements.fileContentEditor.value === originalFileContent);
+    }
+}
+
+async function handleSaveFile() {
+    if (!isEditing || !selectedFilePath || !elements.fileContentEditor || elements.saveFileBtn?.disabled) {
+        return;
+    }
+     console.log('Attempting to save file:', selectedFilePath);
+     const newContent = elements.fileContentEditor.value;
+     elements.saveFileBtn.disabled = true;
+     updateStatus('Saving...', 'info');
+
+     try {
+         const result = await window.electronAPI.invoke('fs:writeFileContent', selectedFilePath, newContent);
+
+         if (result.success) {
+             updateStatus('File saved successfully.', 'success', 2000);
+             originalFileContent = newContent;
+             elements.saveFileBtn.disabled = true;
+
+             // Update the display view as well after saving & re-highlight
+             elements.fileContentDisplay.textContent = newContent; // Use textContent first
+             if (window.hljs && typeof window.hljs.highlightElement === 'function') {
+                try {
+                    window.hljs.highlightElement(elements.fileContentDisplay);
+                } catch (e) {
+                    console.warn(`Highlighting after save failed:`, e);
+                     elements.fileContentDisplay.innerHTML = escapeHtml(newContent); // Fallback if highlight fails
+                }
+            } else {
+                 elements.fileContentDisplay.innerHTML = escapeHtml(newContent); // Fallback if hljs unavailable
+            }
+
+         } else {
+             console.error('Failed to save file:', result.error);
+             updateStatus(`Save failed: ${result.error.message}`, 'error', 5000);
+             elements.saveFileBtn.disabled = false;
+         }
+     } catch (error) {
+         console.error('IPC Error saving file:', error);
+         updateStatus(`Save IPC Error: ${error.message}`, 'error', 5000);
+         elements.saveFileBtn.disabled = false;
+     }
+}
+
+async function handleLoadGitHub() {
+     updateStatus('GitHub loading not implemented yet.', 'info', 3000);
+     console.warn('GitHub loading needs backend implementation.');
+}
