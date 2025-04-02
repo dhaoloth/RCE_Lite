@@ -1,20 +1,21 @@
 # Repo Console Lite
 
-Repo Console Lite is a desktop application for browsing repository structures, viewing and editing files, and exporting project contents in various formats. It aims to provide a simple interface for quickly understanding and documenting codebases.
+Repo Console Lite is a desktop application for browsing local repository structures, viewing and editing files, and exporting project contents in various formats. It aims to provide a simple interface for quickly understanding and documenting codebases.
 
 ## Features
 
-*   **Repository Structure Viewer**: Interactive tree-style display of files and folders.
+*   **Local Repository Structure Viewer**: Interactive tree-style display of files and folders for local projects.
 *   **File Content Viewing**: View text-based files within the application.
 *   **Syntax Highlighting**: Supports highlighting for numerous programming languages using Highlight.js.
-*   **Basic File Editing**: Edit text files directly within the app (enable by double-clicking a file). Save changes with `Ctrl+S`, discard with `Esc`.
-*   **Multi-Format Project Export**: Export project contents (filtered by extension and ignoring specified items like `node_modules`, binaries, etc.) as:
+*   **Basic File Editing**: Edit text files directly within the app (enable by double-clicking a file). Save changes with `Ctrl+S` or the "Save" button, discard with `Esc`.
+*   **Multi-Format Project Export**: Export local project contents (filtered by extension and ignoring specified items like `node_modules`, binaries, etc.) as:
     *   Markdown (`.md`)
     *   XML (`.xml`)
     *   Text File Structure (`.txt`)
-*   **Repository History**: Quickly access the last 5 opened folders via a dropdown menu (`Ctrl+H`).
-*   **Repository Scanning**: Scan a selected "home" directory to find `.git` repositories within it.
-*   **User-Friendly**: Minimalist interface with keyboard shortcuts.
+*   **Repository History**: Quickly access the last 5 opened local folders via a dropdown menu initiated by the "History" button. Includes an option to clear the history.
+*   **Local Repository Scanning**: Scan a selected parent directory ("home") to find local `.git` repositories within it.
+*   **GitHub Loading (Placeholder)**: The "Open GitHub" button currently serves as a placeholder, indicating that direct loading from GitHub URLs is planned for future updates.
+*   **User-Friendly**: Minimalist interface with key keyboard shortcuts (`Ctrl+O` for Open Local, `Ctrl+E` for Export, `Ctrl+S` for Save).
 
 ## Installation
 
@@ -49,14 +50,15 @@ You can download ready-to-use Windows versions (if provided) from the [Releases]
 
 ## Usage
 
-1.  **Open Folder**: Click "Open Folder..." or use `Ctrl+O`.
-2.  **Browse Files**: Click a file in the tree to view its contents.
-3.  **Edit File**: **Double-click** a file in the tree to enable editing mode.
+1.  **Open Local Folder**: Click "Open Local" or use `Ctrl+O`. Select a local project folder.
+2.  **Open GitHub**: Clicking "Open GitHub" currently shows a placeholder message; direct loading is planned for future updates.
+3.  **Browse Files**: Click a file in the tree to view its contents.
+4.  **Edit File**: **Double-click** a file in the tree to enable editing mode.
     *   Save changes with `Ctrl+S` or the "Save" button.
     *   Discard changes and exit editing mode by pressing `Esc`.
-4.  **Export Project**: Click "Export Project" (`Ctrl+E`), choose a save location and format (`.md`, `.xml`, `.txt`).
-5.  **History**: Click the "History" button or use `Ctrl+H` to see and open recent folders. Use "Clear History" within the dropdown to reset it.
-6.  **Scan Dirs**: Click "Scan Dirs", select a parent directory, and the file tree will be replaced with a list of found Git repositories. Click a result to open it.
+5.  **Export Project**: Click "Export" (`Ctrl+E`), choose a save location and format (`.md`, `.xml`, `.txt`). This works for the currently loaded local project.
+6.  **History**: Click the "History" button to see and open recent local folders. Use "Clear History" within the dropdown to reset it.
+7.  **Scan Home**: Click "Scan Home", select a parent directory, and the file tree will be replaced with a list of found local Git repositories. Click a result to open it.
 
 ## Build Instructions (Windows 10+)
 
@@ -91,6 +93,7 @@ This project is licensed under the MIT License.
 ---
 
 ### Screenshots
+*(Screenshots should ideally be updated if UI changes are significant)*
 ![alt text](image.png)
 ![alt text](image-1.png)
 ![alt text](image-2.png)

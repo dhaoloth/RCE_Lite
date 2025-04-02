@@ -15,7 +15,8 @@
     "repository",
     "viewer",
     "exporter",
-    "electron"
+    "electron",
+    "github"
   ],
   "author": "dhaoloth",
   "license": "MIT",
@@ -25,7 +26,10 @@
   },
   "dependencies": {
     "electron-store": "^10.0.1",
-    "highlight.js": "^11.9.0"
+    "highlight.js": "^11.9.0",
+    "cheerio": "^1.0.0-rc.12",
+    "axios": "^1.6.7",
+    "url-parse": "^1.5.10"
   },
   "build": {
     "appId": "dev.app.rcelite",

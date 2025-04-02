@@ -4,88 +4,100 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repo Console Lite</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+    <title>Repository Console Lite</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 </head>
 <body>
     <div class="app-container">
-        <header>
-            <div class="logo">
-                <i class="fas fa-folder-tree"></i>
-                <h1>Repo Console Lite</h1>
-            </div>
-            <div class="header-actions">
-                <button class="btn" id="open-folder-btn" title="Open Folder (Ctrl+O)">
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button id="open-local-btn" class="toolbar-btn">
                     <i class="fas fa-folder-open"></i>
-                    <span>Open Folder...</span>
+                    <span>Open Local</span>
                 </button>
-
-                <div class="dropdown">
-                    <button class="btn" id="history-btn" title="Open Recent (Ctrl+H)">
+                <button id="open-github-btn" class="toolbar-btn">
+                    <i class="fab fa-github"></i>
+                    <span>Open GitHub</span>
+                </button>
+                <button id="scan-home-btn" class="toolbar-btn">
+                    <i class="fas fa-search"></i>
+                    <span>Scan Home</span>
+                </button>
+                <div class="history-container">
+                    <button id="history-btn" class="toolbar-btn">
                         <i class="fas fa-history"></i>
                         <span>History</span>
                     </button>
-                    <div class="dropdown-content" id="history-dropdown-content">
-                        <p class="placeholder-text">No history yet.</p>
-                        <hr>
-                        <a href="#" id="clear-history-link">Clear History</a>
+                    <div id="history-dropdown" class="history-dropdown">
+                        <div id="history-dropdown-content" class="dropdown-content">
+                            <span class="placeholder-text">No recent folders</span>
+                            <hr style="display: none;">
+                            <a href="#" id="clear-history-link">Clear History</a>
+                        </div>
                     </div>
-                </div>
-                <button class="btn" id="scan-home-btn" title="Scan Home Directory">
-                    <i class="fas fa-search"></i>
-                    <span>Scan Dirs</span>
-                </button>
-
-               <div class="github-input-container" style="display: none;">
-                    <input type="text" id="github-url-input" placeholder="Enter GitHub URL (e.g., https://github.com/user/repo)" style="padding: 0.4rem; border-radius: 4px; border: 1px solid var(--secondary); background-color: var(--pane-bg); color: var(--text); width: 250px;">
-                    <button class="btn" id="load-github-btn" title="Load from GitHub (Read-only)">
-                        <i class="fab fa-github"></i> Load
-                    </button>
-                </div>
-
-                 <button class="btn btn-primary" id="export-project-btn" title="Export Project Content (Ctrl+E)" disabled>
+               </div>
+            </div>
+            <div class="toolbar-right">
+                <button id="export-project-btn" class="toolbar-btn">
                     <i class="fas fa-file-export"></i>
-                    <span>Export Project</span>
+                    <span>Export</span>
+                    <span id="export-progress"></span>
                 </button>
             </div>
-        </header>
-
-        <div class="main-content">
-            <aside class="file-tree-pane">
-                 <div class="pane-header">
-                     <span id="repo-root-name">No Folder Open</span>
-                 </div>
-                 <div class="tree-container" id="file-tree">
-                     <p class="placeholder-text">Click "Open Folder" to view structure.</p>
-                 </div>
-            </aside>
-
-            <main class="file-viewer-pane">
-                <div class="pane-header" id="viewer-header">
-                    <span id="viewed-file-path">Select a file to view</span>
-                    <button class="btn btn-success" id="save-file-btn" title="Save Changes (Ctrl+S)" style="margin-left: auto; display: none;">
-                         <i class="fas fa-save"></i> Save
-                    </button>
-                </div>
-                <div class="viewer-container">
-                     <textarea id="file-content-editor" class="hljs" spellcheck="false" style="display: none; width: 100%; height: 100%; background-color: var(--code-bg); color: var(--text); border: none; font-family: 'Consolas', 'Menlo', 'Courier New', monospace; font-size: 0.9rem; line-height: 1.6; resize: none; padding: 1rem; tab-size: 4; -moz-tab-size: 4;"></textarea>
-                     <pre><code id="file-content-display" class="hljs"></code></pre>
-                     <div id="viewer-placeholder">
-                         <p class="placeholder-text">Select a file from the tree on the left.</p>
-                     </div>
-                 </div>
-            </main>
         </div>
 
-         <footer class="status-bar-bottom" id="status-bar">
-             <span id="status-message">Ready</span>
-             <span id="export-progress" style="display: none;"></span>
-         </footer>
+        <div class="main-content">
+            <div class="file-tree-pane">
+                <div class="pane-header">
+                    <span id="repo-root-name">No repository selected</span>
+                </div>
+                <div class="repo-info-panel">
+                    <h3>Repository Info</h3>
+                    <div id="repo-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-file"></i>
+                            <span id="total-files">0 files</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-folder"></i>
+                            <span id="total-dirs">0 folders</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-code"></i>
+                            <span id="repo-size">0 KB</span>
+                        </div>
+                    </div>
+                    <div id="language-stats">
+                        <h4>Languages</h4>
+                        <div id="language-list"></div>
+                    </div>
+                </div>
+                <div id="file-tree"></div>
+            </div>
 
+            <div class="file-viewer-pane">
+                <div id="viewer-header" class="pane-header">
+                    <span id="viewed-file-path">Select a file to view</span>
+                    <button id="save-file-btn" class="toolbar-btn" style="display: none;" disabled>
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                </div>
+                <div id="viewer-placeholder" class="placeholder-text">
+                    <i class="fas fa-file-alt"></i>
+                    <p>Select a file to view its contents</p>
+                </div>
+                <pre id="file-content-display" style="display: none;"></pre>
+                <textarea id="file-content-editor" style="display: none;"></textarea>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span id="status-message" class="status-message">Ready</span>
+            <span id="export-progress" style="display: none;"></span>
+        </div>
     </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script defer src="./renderer.js"></script>
 </body>

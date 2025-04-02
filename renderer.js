@@ -3,11 +3,15 @@ let currentFileTree = null;
 let selectedFilePath = null;
 let isEditing = false;
 let originalFileContent = null;
+let navigationHistory = [];
+let currentHistoryIndex = -1;
 
 const PATH_SEP_REGEX = /[\\/]/;
 
 const elements = {
     openFolderBtn: document.getElementById('open-folder-btn'),
+    openGithubBtn: document.getElementById('open-github-btn'), 
+    scanHomeBtn: document.getElementById('scan-home-btn'),   
     exportProjectBtn: document.getElementById('export-project-btn'),
     fileTreeContainer: document.getElementById('file-tree'),
     repoRootNameSpan: document.getElementById('repo-root-name'),
@@ -20,12 +24,15 @@ const elements = {
     statusMessageSpan: document.getElementById('status-message'),
     exportProgressSpan: document.getElementById('export-progress'),
     historyBtn: document.getElementById('history-btn'),
+    historyDropdown: document.getElementById('history-dropdown'), 
     historyDropdownContent: document.getElementById('history-dropdown-content'),
     clearHistoryLink: document.getElementById('clear-history-link'),
-    scanHomeBtn: document.getElementById('scan-home-btn'),
     saveFileBtn: document.getElementById('save-file-btn'),
     fileViewerPane: document.querySelector('.file-viewer-pane'),
 };
+
+console.log('Проверка элемента Кнопки Истории:', elements.historyBtn);
+console.log('Проверка элемента Дропдауна Истории:', elements.historyDropdown);
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Renderer DOMContentLoaded');
@@ -35,15 +42,94 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+    // --- Существующие обработчики IPC ---
     window.electronAPI.on('show-error', handleShowError);
-    window.electronAPI.on('trigger-open-folder', handleOpenFolderClick);
+    window.electronAPI.on('trigger-open-folder', handleOpenLocalClick);
     window.electronAPI.on('trigger-export-project', handleExportClick);
     window.electronAPI.on('trigger-scan-home', handleScanDirsClick);
-    window.electronAPI.on('trigger-clear-history', handleClearHistory);
+    window.electronAPI.on('trigger-clear-history', handleClearHistory); // Оставим на всякий случай, если вызывается из меню
 
-    if (elements.openFolderBtn) {
-        elements.openFolderBtn.addEventListener('click', handleOpenFolderClick);
+    // --- Получение ссылок на кнопки (убедитесь, что ID верны) ---
+    const openLocalBtn = document.getElementById('open-local-btn');
+    const openGithubBtn = document.getElementById('open-github-btn');
+
+    // --- Обработчик кнопки "History" ---
+    if (elements.historyBtn && elements.historyDropdown) {
+        elements.historyBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Остановить всплытие, чтобы клик по кнопке не закрыл тут же меню
+            const dropdown = elements.historyDropdown;
+            const isVisible = dropdown.classList.contains('show');
+
+            // Функция для закрытия меню по клику вне
+            const closeDropdownOnClickOutside = (event) => {
+                // Проверяем, что клик был не по кнопке и не внутри самого выпадающего списка
+                if (!elements.historyBtn.contains(event.target) && !dropdown.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                    document.removeEventListener('click', closeDropdownOnClickOutside, true); // Удаляем слушатель после закрытия
+                }
+            };
+
+            if (!isVisible) {
+                dropdown.classList.add('show');
+                // Добавляем слушатель для закрытия ТОЛЬКО когда меню открывается
+                // Используем setTimeout, чтобы текущий клик не вызвал немедленное закрытие
+                setTimeout(() => {
+                    document.addEventListener('click', closeDropdownOnClickOutside, true);
+                }, 0);
+            } else {
+                // Если меню уже было видимо, просто скрываем его и удаляем слушатель
+                dropdown.classList.remove('show');
+                document.removeEventListener('click', closeDropdownOnClickOutside, true);
+            }
+        });
+    } else {
+        console.error("History button or dropdown element not found!");
     }
+
+    // --- Обработчик кликов ВНУТРИ выпадающего списка истории ---
+    if (elements.historyDropdownContent) {
+        elements.historyDropdownContent.addEventListener('click', (event) => {
+            const targetLink = event.target.closest('a'); // Находим ближайшую ссылку <a>, по которой кликнули
+            if (!targetLink) return; // Клик был не по ссылке
+
+            let closeDropdownAfterAction = false; // Флаг, чтобы закрыть dropdown после действия
+
+            // Клик по ссылке очистки истории
+            if (targetLink.id === 'clear-history-link') {
+                event.preventDefault(); // Предотвращаем переход по '#'
+                handleClearHistory(); // Вызываем функцию очистки
+                closeDropdownAfterAction = true;
+            }
+            // Клик по элементу истории
+            else if (targetLink.dataset.path) {
+                event.preventDefault(); // Предотвращаем переход по '#'
+                handleHistoryItemClick(targetLink.dataset.path); // Вызываем обработчик клика по элементу
+                closeDropdownAfterAction = true;
+            }
+
+            // Закрываем dropdown, если было выполнено действие
+            if (closeDropdownAfterAction && elements.historyDropdown) {
+                elements.historyDropdown.classList.remove('show');
+                // Удаляем слушатель клика вне (на случай, если он еще активен)
+                // Функция closeDropdownOnClickOutside должна быть доступна здесь, если она объявлена выше
+                // Но безопаснее просто удалить по имени функции, если она не найдена
+                 document.removeEventListener('click', (e) => { /* ссылка на функцию */ }, true); // Убираем слушатель
+            }
+        });
+    } else {
+         console.error("History dropdown content element not found!");
+    }
+
+
+    // --- Остальные обработчики (Open Local, Open GitHub, Export, Tree, Scan, Save, Editor, Keydown) ---
+    if (openLocalBtn) {
+        openLocalBtn.addEventListener('click', handleOpenLocalClick);
+    }
+
+    if (openGithubBtn) {
+        openGithubBtn.addEventListener('click', handleOpenGitHubClick);
+    }
+
     if (elements.exportProjectBtn) {
         elements.exportProjectBtn.addEventListener('click', handleExportClick);
     }
@@ -51,43 +137,37 @@ function setupEventListeners() {
         elements.fileTreeContainer.addEventListener('click', handleTreeClick);
         elements.fileTreeContainer.addEventListener('dblclick', handleTreeDoubleClick);
     }
-     if (elements.clearHistoryLink) {
-        elements.clearHistoryLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            handleClearHistory();
-             elements.historyDropdownContent.style.display = 'none';
-             setTimeout(() => {
-                 if (elements.historyDropdownContent) elements.historyDropdownContent.style.display = '';
-             }, 100);
-        });
-    }
-     if (elements.historyDropdownContent) {
-         elements.historyDropdownContent.addEventListener('click', handleHistoryItemClick);
-     }
     if (elements.scanHomeBtn) {
         elements.scanHomeBtn.addEventListener('click', handleScanDirsClick);
     }
-     if (elements.saveFileBtn) {
-         elements.saveFileBtn.addEventListener('click', handleSaveFile);
-     }
-     if (elements.fileContentEditor) {
-         elements.fileContentEditor.addEventListener('input', handleEditorInput);
-     }
+    if (elements.saveFileBtn) {
+        elements.saveFileBtn.addEventListener('click', handleSaveFile);
+    }
+    if (elements.fileContentEditor) {
+        elements.fileContentEditor.addEventListener('input', handleEditorInput);
+    }
 
+    // Обработчик нажатий клавиш (без изменений, кроме удаления фокуса на Ctrl+H)
     document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenFolderClick(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); handleOpenLocalClick(); }
         if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); if (!elements.exportProjectBtn?.disabled) handleExportClick(); }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); elements.historyBtn?.focus(); } // Focus to open dropdown
+        // Убрали Ctrl+H
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-             if (isEditing && !elements.saveFileBtn?.disabled) {
-                 e.preventDefault();
-                 handleSaveFile();
+            if (isEditing && !elements.saveFileBtn?.disabled) {
+                e.preventDefault();
+                handleSaveFile();
+            }
+        }
+        if (e.key === 'Escape') {
+             if (isEditing) {
+                disableEditing(true);
+             } else if (elements.historyDropdown && elements.historyDropdown.classList.contains('show')) {
+                 elements.historyDropdown.classList.remove('show');
+                 // Нужно удалить слушатель клика вне, если он был добавлен
+                  document.removeEventListener('click', (e) => { /* ссылка на функцию */ }, true);
              }
         }
-        if (e.key === 'Escape' && isEditing) {
-            disableEditing(true); // Revert changes on Escape
-        }
-     });
+    });
 }
 
 function handleShowError(title, message) {
@@ -95,44 +175,78 @@ function handleShowError(title, message) {
     updateStatus(`Error: ${message}`, 'error', 5000);
 }
 
-async function handleOpenFolderClick() {
-    console.log('[handleOpenFolderClick] Function called.');
+async function handleOpenLocalClick() {
+    console.log('[handleOpenLocalClick] Opening local directory dialog.');
     updateStatus('Opening folder dialog...', 'info');
-    if (!window.electronAPI || typeof window.electronAPI.invoke !== 'function') {
-         console.error("ERROR: window.electronAPI.invoke is not available! Check preload script.");
-         updateStatus('Error: Preload script failed.', 'error');
-         return;
-    }
-
-    try {
-        const result = await window.electronAPI.invoke('dialog:openDirectory');
-        console.log('[handleOpenFolderClick] Invoke result received:', JSON.stringify(result, null, 2));
-
-        if (result && result.success === true && typeof result.data === 'string' && result.data.length > 0) {
-            console.log(`[handleOpenFolderClick] Success! Path selected: ${result.data}`);
-            await setActiveRepo(result.data);
-
-        } else if (result && result.success === false && result.error && result.error.message) {
-            console.error(`[handleOpenFolderClick] Failed (reported by main): ${result.error.message}`, result.error);
-            updateStatus(`Failed to open: ${result.error.message}`, 'error', 5000);
-
-        } else {
-             if (result && result.success === true && result.data === null) {
-                 console.log('[handleOpenFolderClick] Folder selection cancelled by user.');
-                 updateStatus('Ready', 'info');
-             } else {
-                 console.warn('[handleOpenFolderClick] Result structure unexpected or failed without error message.', 'Received result:', result);
-                 updateStatus('Folder selection failed or cancelled.', 'info');
-             }
-        }
-
-    } catch (error) {
-        console.error('[handleOpenFolderClick] CATCH BLOCK - Error during invoke/processing in renderer:', error);
-        updateStatus(`Client-side error: ${error.message}`, 'error');
+    const result = await window.electronAPI.invoke('dialog:openDirectory');
+    if (result.success && result.data) {
+        await setActiveRepo(result.data, false); // Явно указываем, что это не GitHub
+    } else if (result.error) {
+        updateStatus(`Error opening folder: ${result.error.message}`, 'error');
+    } else {
+        updateStatus('Folder selection cancelled.', 'info', 2000);
     }
 }
 
-async function setActiveRepo(repoPath) {
+function handleOpenGitHubClick() {
+    console.log('Open GitHub button clicked - Placeholder.');
+    updateStatus('Opening GitHub repositories is planned for a future update.', 'info', 4000);
+    // Можно также использовать alert:
+    // alert('Opening GitHub repositories directly is planned for a future update.');
+}
+
+function updateRepoStats(stats) {
+    console.log('[updateRepoStats] Updating repository stats:', stats);
+    if (!stats) {
+        console.warn('[updateRepoStats] No stats provided');
+        return;
+    }
+
+    const totalFilesEl = document.getElementById('total-files');
+    const totalDirsEl = document.getElementById('total-dirs');
+    const repoSizeEl = document.getElementById('repo-size');
+    const languageListEl = document.getElementById('language-list');
+
+    if (totalFilesEl) {
+        totalFilesEl.textContent = stats.files === 1 ? '1 file' : `${stats.files} files`;
+    }
+    if (totalDirsEl) {
+        totalDirsEl.textContent = stats.directories === 1 ? '1 folder' : `${stats.directories} folders`;
+    }
+    if (repoSizeEl) {
+        repoSizeEl.textContent = stats.size || '0 B';
+    }
+
+    if (languageListEl) {
+        languageListEl.innerHTML = '';
+        if (stats.languages && stats.languages.length > 0) {
+            stats.languages.forEach(lang => {
+                const langTag = document.createElement('span');
+                langTag.className = 'language-tag';
+                langTag.textContent = lang.name;
+                languageListEl.appendChild(langTag);
+            });
+        } else {
+            languageListEl.innerHTML = '<span class="placeholder-text">No languages detected</span>';
+        }
+    }
+}
+
+function formatSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+async function setActiveRepo(repoPath, isGitHub = false) {
+    if (isGitHub) {
+        console.warn("[setActiveRepo] Attempted to load a GitHub repo, but feature is disabled.");
+        updateStatus('GitHub loading is currently disabled.', 'warning', 3000);
+        return; // Прерываем выполнение для GitHub
+    }
+
     if (!repoPath) {
         console.error("[setActiveRepo] Received empty repoPath. Aborting.");
         return;
@@ -140,7 +254,8 @@ async function setActiveRepo(repoPath) {
     repoPath = String(repoPath).replace(/[\\/]+$/, '');
 
     console.log(`[setActiveRepo] Setting active repo: ${repoPath}`);
-    updateStatus(`Loading folder: ${repoPath}...`, 'info');
+    console.log(`[setActiveRepo] isGitHub: ${isGitHub}`);
+    updateStatus(`Loading repository: ${repoPath}...`, 'info');
 
     addPathToHistory(repoPath);
 
@@ -153,55 +268,47 @@ async function setActiveRepo(repoPath) {
     clearFileViewer();
     updateUIState();
 
-    console.log(`[setActiveRepo] Invoking fs:readDirectoryStructure with currentRepoPath: "${currentRepoPath}"`);
-
-    if (!currentRepoPath) {
-         console.error("[setActiveRepo] CRITICAL: currentRepoPath became null/empty before invoke!");
-         updateStatus('Internal Error: Path lost', 'error');
-         return;
-    }
-
     try {
-        const result = await window.electronAPI.invoke('fs:readDirectoryStructure', currentRepoPath);
-        console.log("[setActiveRepo] fs:readDirectoryStructure result received");
+        console.log("[setActiveRepo] Invoking fs:readDirectoryStructure...");
+        const result = await window.electronAPI.invoke('fs:readDirectoryStructure', currentRepoPath, isGitHub);
+        console.log("[setActiveRepo] fs:readDirectoryStructure result received:", result);
 
         if (result.success) {
-            currentFileTree = result.data;
+            currentFileTree = result.data.structure;
+            console.log("[setActiveRepo] Structure received:", currentFileTree);
+            console.log("[setActiveRepo] Stats received:", result.data.stats);
+            
+            updateRepoStats(result.data.stats);
 
             if (elements.fileTreeContainer) {
-                 elements.fileTreeContainer.innerHTML = '';
-                 elements.fileTreeContainer.classList.remove('scan-results-container');
-            } else {
-                console.error("[setActiveRepo] Tree container element not found!");
-                return;
+                elements.fileTreeContainer.innerHTML = '';
+                elements.fileTreeContainer.classList.remove('scan-results-container');
+
+                if (currentFileTree && currentFileTree.children && currentFileTree.children.length > 0) {
+                    console.log("[setActiveRepo] Rendering tree with children:", currentFileTree.children.length);
+                    currentFileTree.children.forEach(childNode => {
+                        renderTree(childNode, elements.fileTreeContainer);
+                    });
+                    console.log("[setActiveRepo] Tree rendered successfully.");
+                } else {
+                    console.log("[setActiveRepo] No children found in tree structure");
+                    elements.fileTreeContainer.innerHTML = '<p class="placeholder-text">Repository is empty.</p>';
+                }
             }
 
-            if (currentFileTree && currentFileTree.children && currentFileTree.children.length > 0) {
-                 currentFileTree.children.forEach(childNode => {
-                    renderTree(childNode, elements.fileTreeContainer);
-                 });
-                 console.log("[setActiveRepo] Tree rendered successfully.");
-            } else if (currentFileTree) {
-                 elements.fileTreeContainer.innerHTML = '<p class="placeholder-text">Folder is empty or contains only ignored items.</p>';
-                 console.log("[setActiveRepo] Rendered empty folder message.");
-            } else {
-                elements.fileTreeContainer.innerHTML = '<p class="placeholder-text error-text">Could not load folder data.</p>';
-                 console.warn("[setActiveRepo] currentFileTree is null/undefined after successful invoke.", result.data);
-            }
-
-            updateStatus('Folder loaded.', 'success', 2000);
+            updateStatus('Repository loaded.', 'success', 2000);
         } else {
-            console.error('[setActiveRepo] Failed to read directory structure (IPC Error):', result.error);
-            updateStatus(`Error loading folder: ${result.error?.message || 'Unknown error'}`, 'error');
+            console.error('[setActiveRepo] Failed to read repository structure:', result.error);
+            updateStatus(`Error loading repository: ${result.error?.message || 'Unknown error'}`, 'error');
             if (elements.fileTreeContainer) {
-                elements.fileTreeContainer.innerHTML = `<p class="placeholder-text error-text">Error loading structure: ${escapeHtml(result.error?.message || 'Unknown error')}</p>`;
+                elements.fileTreeContainer.innerHTML = `<p class="placeholder-text error-text">Error loading repository: ${escapeHtml(result.error?.message || 'Unknown error')}</p>`;
             }
         }
     } catch (error) {
-        console.error('[setActiveRepo] CATCH BLOCK - Error during IPC invoke for fs:readDirectoryStructure:', error);
-        updateStatus(`IPC Invoke Error: ${error.message}`, 'error');
-         if (elements.fileTreeContainer) {
-            elements.fileTreeContainer.innerHTML = `<p class="placeholder-text error-text">IPC Error loading structure: ${escapeHtml(error.message)}</p>`;
+        console.error('[setActiveRepo] Error:', error);
+        updateStatus(`Error: ${error.message}`, 'error');
+        if (elements.fileTreeContainer) {
+            elements.fileTreeContainer.innerHTML = `<p class="placeholder-text error-text">Error: ${escapeHtml(error.message)}</p>`;
         }
     }
 }
@@ -211,6 +318,9 @@ function renderTree(node, parentElement) {
     treeNode.className = 'tree-node';
     treeNode.dataset.path = node.path;
     treeNode.dataset.type = node.type;
+    if (node.isRepository) {
+        treeNode.dataset.isRepository = 'true';
+    }
     if (node.error) {
         treeNode.dataset.error = node.error;
         treeNode.title = node.error;
@@ -225,11 +335,7 @@ function renderTree(node, parentElement) {
     const caret = document.createElement('div');
     caret.className = 'tree-caret';
     if (node.type === 'directory') {
-        if (node.children && node.children.length > 0) {
-             caret.innerHTML = '<i class="fas fa-caret-right"></i>';
-        } else {
-             caret.classList.add('placeholder');
-        }
+        caret.innerHTML = '<i class="fas fa-caret-right"></i>';
     } else {
         caret.classList.add('placeholder');
     }
@@ -239,8 +345,56 @@ function renderTree(node, parentElement) {
     icon.className = 'tree-icon';
     if (node.type === 'directory') {
         icon.classList.add('folder', 'fas', 'fa-folder');
+        if (node.isRepository) {
+            icon.classList.add('repository');
+            icon.style.color = '#6cc644'; // GitHub green color
+        }
     } else if (node.type === 'file') {
-        icon.classList.add('file', 'fas', 'fa-file');
+        icon.classList.add('file', 'fas');
+        const ext = node.name.split('.').pop()?.toLowerCase();
+        switch (ext) {
+            case 'js':
+            case 'jsx':
+            case 'ts':
+            case 'tsx':
+                icon.classList.add('fa-file-code');
+                icon.style.color = '#f1e05a';
+                break;
+            case 'html':
+            case 'htm':
+                icon.classList.add('fa-file-code');
+                icon.style.color = '#e34c26';
+                break;
+            case 'css':
+            case 'scss':
+            case 'sass':
+                icon.classList.add('fa-file-code');
+                icon.style.color = '#563d7c';
+                break;
+            case 'json':
+                icon.classList.add('fa-file-code');
+                icon.style.color = '#8bc34a';
+                break;
+            case 'md':
+                icon.classList.add('fa-file-alt');
+                icon.style.color = '#b6b6b6';
+                break;
+            case 'jpg':
+            case 'jpeg':
+            case 'png':
+            case 'gif':
+            case 'svg':
+                icon.classList.add('fa-file-image');
+                icon.style.color = '#f1c40f';
+                break;
+            case 'pdf':
+                icon.classList.add('fa-file-pdf');
+                icon.style.color = '#e74c3c';
+                break;
+            default:
+                icon.classList.add('fa-file');
+                icon.style.color = '#8db9e2';
+        }
     } else {
         icon.classList.add('file', 'fas', 'fa-link');
     }
@@ -251,21 +405,25 @@ function renderTree(node, parentElement) {
     content.textContent = node.name;
     header.appendChild(content);
 
-     if (node.error) {
+    if (node.size && node.type === 'file') {
+        const size = document.createElement('span');
+        size.className = 'file-size';
+        size.textContent = node.size;
+        header.appendChild(size);
+    }
+
+    if (node.error) {
         const errorIcon = document.createElement('i');
         errorIcon.className = 'tree-icon error-icon fas fa-exclamation-triangle';
         errorIcon.style.marginLeft = '5px';
         header.appendChild(errorIcon);
-     }
+    }
 
     treeNode.appendChild(header);
 
-    if (node.type === 'directory' && node.children && node.children.length > 0) {
+    if (node.type === 'directory') {
         const childrenContainer = document.createElement('div');
         childrenContainer.className = 'tree-node-children';
-        node.children.forEach(child => {
-            renderTree(child, childrenContainer);
-        });
         treeNode.appendChild(childrenContainer);
     }
 
@@ -274,37 +432,83 @@ function renderTree(node, parentElement) {
 
 function handleTreeClick(event) {
     const header = event.target.closest('.tree-node-header');
-
-    if (!header || header.classList.contains('has-error')) {
-        if (header && header.classList.contains('has-error')) {
-             const nodeElement = header.closest('.tree-node');
-             if (nodeElement && nodeElement.dataset.error) {
-                 updateStatus(`Error: ${nodeElement.dataset.error}`, 'error', 4000);
-             }
-        }
-        return;
-    }
+    if (!header) return;
 
     const nodeElement = header.closest('.tree-node');
     if (!nodeElement) return;
 
     const path = nodeElement.dataset.path;
     const type = nodeElement.dataset.type;
+    const isRepository = nodeElement.dataset.isRepository === 'true';
+
+    console.log('[handleTreeClick] Clicked node:', {
+        path,
+        type,
+        isRepository
+    });
+
+    if (isRepository) {
+        console.log('[handleTreeClick] Loading repository:', path);
+        setActiveRepo(path, false);
+        return;
+    }
 
     if (type === 'directory') {
         const childrenContainer = nodeElement.querySelector(':scope > .tree-node-children');
-        const caret = header.querySelector('.tree-caret:not(.placeholder)');
-
+        const caret = header.querySelector('.tree-caret');
+        
         if (childrenContainer && caret) {
             const isExpanded = childrenContainer.classList.toggle('tree-node-children--expanded');
             caret.classList.toggle('tree-caret--expanded', isExpanded);
-        }
-    }
 
-    if (type === 'file') {
+            console.log('[handleTreeClick] Directory toggled:', {
+                path,
+                isExpanded,
+                hasChildren: childrenContainer.children.length > 0
+            });
+
+            if (isExpanded && childrenContainer.children.length === 0) {
+                console.log('[handleTreeClick] Loading directory contents:', path);
+                loadDirectoryContents(nodeElement, path, false);
+            }
+        }
+    } else if (type === 'file') {
+        console.log('[handleTreeClick] Selecting file:', path);
         selectFile(path);
-        elements.fileTreeContainer.querySelectorAll('.tree-node-header.selected').forEach(el => el.classList.remove('selected'));
+        elements.fileTreeContainer.querySelectorAll('.tree-node-header.selected').forEach(el => 
+            el.classList.remove('selected')
+        );
         header.classList.add('selected');
+    }
+}
+
+async function loadDirectoryContents(nodeElement, path, isGitHub) {
+    try {
+        const result = await window.electronAPI.invoke('fs:readDirectoryStructure', path, isGitHub);
+        
+        if (result.success) {
+            const structure = result.data.structure;
+            updateRepoStats(result.data.stats);
+
+            let childrenContainer = nodeElement.querySelector(':scope > .tree-node-children');
+            if (!childrenContainer) {
+                childrenContainer = document.createElement('div');
+                childrenContainer.className = 'tree-node-children';
+                nodeElement.appendChild(childrenContainer);
+            }
+
+            if (structure && structure.children && structure.children.length > 0) {
+                structure.children.forEach(childNode => {
+                    renderTree(childNode, childrenContainer);
+                });
+            }
+        } else {
+            console.error('Failed to load directory contents:', result.error);
+            updateStatus(`Error loading directory: ${result.error?.message || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error loading directory contents:', error);
+        updateStatus(`Error loading directory: ${error.message}`, 'error');
     }
 }
 
@@ -334,12 +538,12 @@ async function selectFile(filePath) {
     if (!filePath) return;
     console.log(`Selecting file: ${filePath}`);
 
-     if (isEditing && elements.fileContentEditor.value !== originalFileContent) {
-         if (!confirm('You have unsaved changes. Discard changes and open new file?')) {
-             return;
-         }
-     }
-     disableEditing(false);
+    if (isEditing && elements.fileContentEditor.value !== originalFileContent) {
+        if (!confirm('You have unsaved changes. Discard changes and open new file?')) {
+            return;
+        }
+    }
+    disableEditing(false);
 
     selectedFilePath = filePath;
     const filename = filePath.split(PATH_SEP_REGEX).pop();
@@ -352,8 +556,8 @@ async function selectFile(filePath) {
         elements.viewedFilePathSpan.textContent = filePath.replace(repoPathWithSep, '');
         elements.viewedFilePathSpan.title = filePath;
     } else if (elements.viewedFilePathSpan) {
-         elements.viewedFilePathSpan.textContent = filename;
-         elements.viewedFilePathSpan.title = filePath;
+        elements.viewedFilePathSpan.textContent = filename;
+        elements.viewedFilePathSpan.title = filePath;
     }
 
     if (elements.viewerPlaceholder) elements.viewerPlaceholder.classList.add('hidden');
@@ -368,7 +572,6 @@ async function selectFile(filePath) {
     elements.fileViewerPane?.classList.remove('editing');
     elements.fileContentDisplay.innerHTML = '';
     elements.fileContentEditor.value = '';
-
 
     try {
         const result = await window.electronAPI.invoke('fs:readFileContent', filePath);
@@ -460,6 +663,7 @@ function updateUIState() {
     const repoLoaded = !!currentRepoPath;
     if (elements.exportProjectBtn) {
         elements.exportProjectBtn.disabled = !repoLoaded;
+        elements.exportProjectBtn.style.display = repoLoaded ? 'inline-flex' : 'none';
     }
 }
 
@@ -505,31 +709,32 @@ async function loadHistory() {
 }
 
 function renderHistory(history) {
-     if (!elements.historyDropdownContent) return;
-     const list = elements.historyDropdownContent;
+    if (!elements.historyDropdownContent) return;
+    const list = elements.historyDropdownContent;
 
-     const items = list.querySelectorAll('a:not(#clear-history-link)');
-     items.forEach(item => item.remove());
-     const hr = list.querySelector('hr');
-     const placeholder = list.querySelector('.placeholder-text');
+    const items = list.querySelectorAll('a[data-path]');
+    items.forEach(item => item.remove());
 
-     if (placeholder) placeholder.style.display = (history?.length ?? 0) === 0 ? 'block' : 'none';
-     if (hr) hr.style.display = (history?.length ?? 0) === 0 ? 'none' : 'block';
+    const placeholder = list.querySelector('.placeholder-text');
+    const hr = list.querySelector('hr');
+    const clearLink = list.querySelector('#clear-history-link');
 
-     if (history && history.length > 0) {
-         history.forEach(repoPath => {
-             const listItem = document.createElement('a');
-             listItem.href = '#';
-             listItem.dataset.path = repoPath;
-             listItem.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
-             listItem.title = repoPath;
-             if (hr) {
-                  list.insertBefore(listItem, hr);
-             } else {
-                  list.appendChild(listItem);
-             }
-         });
-     }
+    const hasHistory = history && history.length > 0;
+
+    if (placeholder) placeholder.style.display = hasHistory ? 'none' : 'block';
+    if (hr) hr.style.display = hasHistory ? 'block' : 'none';
+    if (clearLink) clearLink.style.display = hasHistory ? 'block' : 'none';
+
+    if (hasHistory && hr) {
+        history.forEach(repoPath => {
+            const listItem = document.createElement('a');
+            listItem.href = '#';
+            listItem.dataset.path = repoPath;
+            listItem.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
+            listItem.title = repoPath;
+            list.insertBefore(listItem, hr);
+        });
+    }
 }
 
 async function addPathToHistory(repoPath) {
@@ -544,95 +749,126 @@ async function addPathToHistory(repoPath) {
  }
 
  async function handleClearHistory() {
-     if (!confirm('Are you sure you want to clear the repository history?')) return;
-     try {
-         const result = await window.electronAPI.invoke('history:clear');
-         if(result.success) {
-            renderHistory([]);
-            updateStatus('History cleared.', 'success', 2000);
-         } else {
-             console.error("Failed to clear history (IPC):", result.error);
-             updateStatus('Error clearing history.', 'error');
-         }
-     } catch (error) {
-         console.error("Failed to clear history (Catch):", error);
-         updateStatus('Error clearing history.', 'error');
-     }
- }
+    if (!confirm('Are you sure you want to clear the repository history?')) return;
+    try {
+        const result = await window.electronAPI.invoke('history:clear');
+        if(result.success) {
+           renderHistory([]);
+           updateStatus('History cleared.', 'success', 2000);
+           if (elements.historyDropdown) {
+                elements.historyDropdown.classList.remove('show');
+                // Не нужно удалять слушатель здесь, т.к. он удаляется при закрытии
+           }
+        } else {
+            console.error("Failed to clear history (IPC):", result.error);
+            updateStatus('Error clearing history.', 'error');
+        }
+    } catch (error) {
+        console.error("Failed to clear history (Catch):", error);
+        updateStatus('Error clearing history.', 'error');
+    }
+}
 
- function handleHistoryItemClick(event) {
-     event.preventDefault();
-     const target = event.target.closest('a[data-path]');
-     if (target && target.dataset.path) {
-         const repoPath = target.dataset.path;
-         console.log(`History item clicked: ${repoPath}`);
-         setActiveRepo(repoPath);
-
-         if (elements.historyDropdownContent) {
-              elements.historyDropdownContent.style.display = 'none';
-             setTimeout(() => {
-                  if (elements.historyDropdownContent) elements.historyDropdownContent.style.display = '';
-             }, 150);
-         }
-     }
- }
+ function handleHistoryItemClick(repoPath) {
+    console.log(`History item clicked: ${repoPath}`);
+    setActiveRepo(repoPath, false);
+}
 
 async function handleScanDirsClick() {
     console.log('Scan Dirs button clicked.');
-    updateStatus('Selecting home directory...', 'info');
+    updateStatus('Selecting directory to scan...', 'info');
     try {
         const homeDirResult = await window.electronAPI.invoke('dialog:selectHomeDirectory');
-         if (homeDirResult.success && homeDirResult.data) {
-             const homePath = homeDirResult.data;
-             updateStatus(`Scanning ${homePath} for repositories...`, 'info');
-             const findResult = await window.electronAPI.invoke('fs:findRepositories', homePath);
-             if (findResult.success) {
-                 displayScanResults(findResult.data);
-             } else {
-                 console.error("Failed to find repositories:", findResult.error);
-                 updateStatus(`Scan failed: ${findResult.error.message}`, 'error');
-             }
-         } else if (homeDirResult.success && !homeDirResult.data) {
+        if (homeDirResult.success && homeDirResult.data) {
+            const scanPath = homeDirResult.data;
+            updateStatus(`Scanning ${scanPath} for repositories...`, 'info');
+            const findResult = await window.electronAPI.invoke('fs:findRepositories', scanPath);
+            if (findResult.success && findResult.data) {
+                displayScanResults(findResult.data, scanPath);
+            } else {
+                console.error("Failed to find repositories:", findResult.error);
+                updateStatus(`Scan failed: ${findResult.error?.message || 'Unknown error'}`, 'error');
+            }
+        } else if (homeDirResult.success && !homeDirResult.data) {
             updateStatus('Scan cancelled.', 'info');
-         } else {
-            console.error("Failed to select home directory:", homeDirResult.error);
+        } else {
+            console.error("Failed to select directory:", homeDirResult.error);
             updateStatus(`Error selecting directory: ${homeDirResult.error.message}`, 'error');
-         }
+        }
     } catch (error) {
         console.error("Error during repository scan:", error);
         updateStatus(`Scan error: ${error.message}`, 'error');
     }
 }
 
-function displayScanResults(repoPaths) {
-    if (!repoPaths || repoPaths.length === 0) {
+function displayScanResults(repositories, scanPath) {
+    if (!repositories || repositories.length === 0) {
         updateStatus('No repositories found in the selected directory.', 'info', 4000);
+        if (elements.fileTreeContainer) {
+            elements.fileTreeContainer.innerHTML = '<p class="placeholder-text">No repositories found.</p>';
+        }
         return;
     }
 
-    updateStatus(`Found ${repoPaths.length} potential repositories. Displaying...`, 'success', 3000);
+    updateStatus(`Found ${repositories.length} repositories.`, 'success', 3000);
 
     if (elements.fileTreeContainer) {
         elements.fileTreeContainer.innerHTML = '';
         elements.fileTreeContainer.classList.add('scan-results-container');
 
-        const list = document.createElement('ul');
-        repoPaths.forEach(repoPath => {
-            const item = document.createElement('li');
-            item.textContent = repoPath.split(PATH_SEP_REGEX).pop() || repoPath;
-            item.title = `Click to open ${repoPath}`;
-            item.dataset.path = repoPath;
-            item.addEventListener('click', () => {
-                elements.fileTreeContainer.classList.remove('scan-results-container');
-                setActiveRepo(repoPath);
-            });
-            list.appendChild(item);
+        // Sort repositories by name
+        const sortedRepos = repositories.sort((a, b) => {
+            const nameA = a.split(PATH_SEP_REGEX).pop().toLowerCase();
+            const nameB = b.split(PATH_SEP_REGEX).pop().toLowerCase();
+            return nameA.localeCompare(nameB);
         });
-        elements.fileTreeContainer.appendChild(list);
-        if (elements.repoRootNameSpan) elements.repoRootNameSpan.textContent = "Scan Results";
+
+        // Create repository nodes
+        sortedRepos.forEach(repoPath => {
+            const repoNode = document.createElement('div');
+            repoNode.className = 'tree-node';
+            repoNode.dataset.path = repoPath;
+            repoNode.dataset.type = 'directory';
+            repoNode.dataset.isRepository = 'true';
+
+            const header = document.createElement('div');
+            header.className = 'tree-node-header';
+
+            const icon = document.createElement('i');
+            icon.className = 'tree-icon fas fa-folder repository';
+            icon.style.color = '#6cc644';
+
+            const content = document.createElement('span');
+            content.className = 'tree-node-content';
+            content.textContent = repoPath.split(PATH_SEP_REGEX).pop();
+            content.title = repoPath;
+
+            header.appendChild(icon);
+            header.appendChild(content);
+            repoNode.appendChild(header);
+            elements.fileTreeContainer.appendChild(repoNode);
+        });
+
+        if (elements.repoRootNameSpan) {
+            elements.repoRootNameSpan.textContent = "Found Repositories";
+            elements.repoRootNameSpan.title = scanPath;
+        }
+
+        // Clear repository info panel
+        const totalFilesEl = document.getElementById('total-files');
+        const totalDirsEl = document.getElementById('total-dirs');
+        const repoSizeEl = document.getElementById('repo-size');
+        const languageListEl = document.getElementById('language-list');
+
+        if (totalFilesEl) totalFilesEl.textContent = '0 files';
+        if (totalDirsEl) totalDirsEl.textContent = '0 folders';
+        if (repoSizeEl) repoSizeEl.textContent = '0.0 B';
+        if (languageListEl) {
+            languageListEl.innerHTML = '<span class="placeholder-text">No languages detected</span>';
+        }
+
         clearFileViewer();
     }
-    console.log("Found Repositories:", repoPaths);
 }
 
 function enableEditing() {
@@ -669,7 +905,6 @@ function disableEditing(revert = false) {
      elements.fileContentEditor.style.display = 'none';
      elements.fileContentDisplay.style.display = 'block';
 
-     // Restore status only if not currently showing an error/success message briefly
      if(elements.statusMessageSpan && !elements.statusMessageSpan.classList.contains('success') && !elements.statusMessageSpan.classList.contains('error')){
         updateStatus('Ready', 'info');
      }
@@ -698,17 +933,16 @@ async function handleSaveFile() {
              originalFileContent = newContent;
              elements.saveFileBtn.disabled = true;
 
-             // Update the display view as well after saving & re-highlight
-             elements.fileContentDisplay.textContent = newContent; // Use textContent first
+             elements.fileContentDisplay.textContent = newContent;
              if (window.hljs && typeof window.hljs.highlightElement === 'function') {
                 try {
                     window.hljs.highlightElement(elements.fileContentDisplay);
                 } catch (e) {
                     console.warn(`Highlighting after save failed:`, e);
-                     elements.fileContentDisplay.innerHTML = escapeHtml(newContent); // Fallback if highlight fails
+                     elements.fileContentDisplay.innerHTML = escapeHtml(newContent);
                 }
             } else {
-                 elements.fileContentDisplay.innerHTML = escapeHtml(newContent); // Fallback if hljs unavailable
+                 elements.fileContentDisplay.innerHTML = escapeHtml(newContent);
             }
 
          } else {
@@ -726,4 +960,42 @@ async function handleSaveFile() {
 async function handleLoadGitHub() {
      updateStatus('GitHub loading not implemented yet.', 'info', 3000);
      console.warn('GitHub loading needs backend implementation.');
+}
+
+async function generateMarkdown(dirPath) {
+    let markdown = `# Project Structure\n\n`;
+
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            markdown += `## Directory: ${entry.name}\n\n`;
+            markdown += await generateMarkdown(fullPath); // Рекурсивный вызов
+        } else if (entry.isFile()) {
+            const fileContent = await fs.readFile(fullPath, 'utf-8');
+            markdown += `### File: ${entry.name}\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
+        }
+    }
+
+    return markdown;
+}
+
+async function generateXML(dirPath) {
+    let xml = `<project>\n`;
+
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            xml += `  <directory name="${entry.name}">\n`;
+            xml += await generateXML(fullPath); // Рекурсивный вызов
+            xml += `  </directory>\n`;
+        } else if (entry.isFile()) {
+            const fileContent = await fs.readFile(fullPath, 'utf-8');
+            xml += `  <file name="${entry.name}">\n${fileContent}\n  </file>\n`;
+        }
+    }
+
+    xml += `</project>\n`;
+    return xml;
 }
