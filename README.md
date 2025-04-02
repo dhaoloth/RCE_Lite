@@ -1,19 +1,19 @@
-# Repo Console Lite
+# Code Explorer
 
-Repo Console Lite is a desktop application for browsing local repository structures, viewing and editing files, and exporting project contents in various formats. It aims to provide a simple interface for quickly understanding and documenting codebases.
+Code Explorer is a desktop application built with Electron for browsing local directory structures, viewing and editing files, and exporting project contents in various formats. It aims to provide a simple interface for quickly understanding and documenting local codebases.
 
 ## Features
 
-*   **Local Repository Structure Viewer**: Interactive tree-style display of files and folders for local projects.
+*   **Directory Structure Viewer**: Interactive tree-style display of files and folders for local projects.
 *   **File Content Viewing**: View text-based files within the application.
 *   **Syntax Highlighting**: Supports highlighting for numerous programming languages using Highlight.js.
 *   **Basic File Editing**: Edit text files directly within the app (enable by double-clicking a file). Save changes with `Ctrl+S` or the "Save" button, discard with `Esc`.
-*   **Multi-Format Project Export**: Export local project contents (filtered by extension and ignoring specified items like `node_modules`, binaries, etc.) as:
+*   **Multi-Format Project Export**: Export the structure and content of the loaded local project (filtered by extension and ignoring specified items like `node_modules`, binaries, etc.) as:
     *   Markdown (`.md`)
     *   XML (`.xml`)
     *   Text File Structure (`.txt`)
-*   **Repository History**: Quickly access the last 5 opened local folders via a dropdown menu initiated by the "History" button. Includes an option to clear the history.
-*   **Local Repository Scanning**: Scan a selected parent directory ("home") to find local `.git` repositories within it.
+*   **Folder History**: Quickly access the last 5 opened local folders via a dropdown menu initiated by the "History" button. Includes an option to clear the history.
+*   **Git Repository Finder**: Scan a selected parent directory to find local `.git` repositories within it.
 *   **GitHub Loading (Placeholder)**: The "Open GitHub" button currently serves as a placeholder, indicating that direct loading from GitHub URLs is planned for future updates.
 *   **User-Friendly**: Minimalist interface with key keyboard shortcuts (`Ctrl+O` for Open Local, `Ctrl+E` for Export, `Ctrl+S` for Save).
 
@@ -29,11 +29,11 @@ Repo Console Lite is a desktop application for browsing local repository structu
     ```
 3.  Clone the repository:
     ```bash
-    git clone https://github.com/dhaoloth/RCE_Lite.git
+    git clone https://github.com/dhaoloth/code-explorer.git
     ```
 4.  Navigate to the project directory:
     ```bash
-    cd RCE_Lite # Or your folder name
+    cd code-explorer
     ```
 5.  Install dependencies:
     ```bash
@@ -46,7 +46,7 @@ Repo Console Lite is a desktop application for browsing local repository structu
 
 ### Prebuilt Release
 
-You can download ready-to-use Windows versions (if provided) from the [Releases](https://github.com/dhaoloth/RCE_Lite/releases) section.
+You can download ready-to-use Windows versions (if provided) from the [Releases](https://github.com/dhaoloth/code-explorer/releases) section of this repository.
 
 ## Usage
 
@@ -60,24 +60,16 @@ You can download ready-to-use Windows versions (if provided) from the [Releases]
 6.  **History**: Click the "History" button to see and open recent local folders. Use "Clear History" within the dropdown to reset it.
 7.  **Scan Home**: Click "Scan Home", select a parent directory, and the file tree will be replaced with a list of found local Git repositories. Click a result to open it.
 
-## Build Instructions (Windows 10+)
+## Build Instructions (Windows 10+ x64)
 
 After following the "Build from Source" steps (including installing dependencies):
 
-*   **Build for both 32-bit and 64-bit Windows (NSIS Installer):**
+*   **Build for 64-bit Windows (NSIS Installer):**
     ```bash
-    npm run build:win
-    ```
-*   **Build only for 64-bit Windows:**
-    ```bash
-    npm run build:win64
-    ```
-*   **Build only for 32-bit Windows:**
-    ```bash
-    npm run build:win32
+    npm run build
     ```
 
-The installers/executables will be located in the `dist` directory.
+The installer (`Code-Explorer-Setup-1.1.3-x64.exe`) will be located in the `dist` directory.
 
 ## Technologies
 
@@ -92,12 +84,4 @@ This project is licensed under the MIT License.
 
 ---
 
-### Screenshots
-*(Screenshots should ideally be updated if UI changes are significant)*
-![alt text](image.png)
-![alt text](image-1.png)
-![alt text](image-2.png)
-
----
-
-For questions or suggestions, please open an [Issue](https://github.com/dhaoloth/RCE_Lite/issues) or contact me.
+For questions or suggestions, please open an [Issue](https://github.com/dhaoloth/code-explorer/issues) or contact me.
