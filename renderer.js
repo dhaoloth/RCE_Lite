@@ -634,28 +634,58 @@ function clearFileViewer() {
 }
 
 async function handleExportClick() {
+    // Проверяем, есть ли выбранный репозиторий и не отключена ли кнопка
     if (!currentRepoPath || elements.exportProjectBtn?.disabled) return;
-    console.log('Starting project export...');
+
+    console.log('Starting project export for:', currentRepoPath);
     updateStatus('Preparing export...', 'info');
+
+    // Отключаем кнопку и показываем индикатор экспорта
     if (elements.exportProjectBtn) elements.exportProjectBtn.disabled = true;
-    if (elements.exportProgressSpan) elements.exportProgressSpan.style.display = 'inline';
-    if (elements.exportProgressSpan) elements.exportProgressSpan.textContent = '(Exporting...)';
+    if (elements.exportProgressSpan) {
+        elements.exportProgressSpan.style.display = 'inline';
+        elements.exportProgressSpan.textContent = '(Exporting...)';
+    }
 
     try {
+        // Вызываем IPC-метод в основном процессе для экспорта
         const result = await window.electronAPI.invoke('project:export', currentRepoPath);
-        if (result.success) {
-            updateStatus(result.data.message, 'success', 6000);
-            console.log("Export successful:", result.data.message);
+
+        // Проверяем результат от основного процесса
+        if (result && result.success) {
+            // Экспорт успешен
+            const successMessage = result.data?.message || 'Export completed successfully.';
+            updateStatus(successMessage, 'success', 6000);
+            console.log("Export successful:", result.data?.message);
+        } else if (result && result.error) {
+            // В основном процессе произошла ошибка во время экспорта
+            const errorMessage = result.error.message || 'Unknown export error occurred.';
+            updateStatus(`Export failed: ${errorMessage}`, 'error', 6000);
+            console.error('Export Failed (from main process):', result.error);
+             // Здесь можно показать диалоговое окно с ошибкой, если нужно
+             // window.electronAPI.invoke('show-error-main', 'Export Error', errorMessage);
         } else {
-            updateStatus(`Export failed: ${result.error.message}`, 'error', 6000);
-            console.error('Export Failed:', result.error);
+            // Неожиданная структура ответа от основного процесса
+            updateStatus('Export failed: Received an unexpected response from the main process.', 'error', 6000);
+            console.error('Export Failed: Unexpected response structure:', result);
         }
-    } catch (error) {
-        console.error('IPC Error during export:', error);
-        updateStatus(`Export IPC Error: ${error.message}`, 'error');
+
+    } catch (error) { // Ошибка произошла при самом вызове IPC (invoke)
+        console.error('IPC Error during export invoke:', error);
+        const ipcErrorMessage = error.message || 'Unknown IPC error during export.';
+        updateStatus(`Export IPC Error: ${ipcErrorMessage}`, 'error', 6000);
+         // Показываем диалоговое окно с ошибкой IPC
+         // window.electronAPI.invoke('show-error-main', 'IPC Error', ipcErrorMessage);
     } finally {
-        if (elements.exportProjectBtn) elements.exportProjectBtn.disabled = !currentRepoPath;
-        if (elements.exportProgressSpan) elements.exportProgressSpan.style.display = 'none';
+        // В любом случае (успех или ошибка) включаем кнопку обратно и скрываем индикатор
+        if (elements.exportProjectBtn) {
+            // Включаем кнопку, только если репозиторий все еще загружен
+            elements.exportProjectBtn.disabled = !currentRepoPath;
+        }
+        if (elements.exportProgressSpan) {
+            elements.exportProgressSpan.style.display = 'none';
+            elements.exportProgressSpan.textContent = ''; // Очищаем текст
+        }
     }
 }
 

@@ -233,7 +233,7 @@ async function exportProject(basePath, savePath, format = 'md', options = {}) {
     return `Processed: ${filesProcessed} files, Skipped: ${filesSkipped}, Total Size: ${formatBytes(totalBytes)}.`;
 }
 
-async function walkAndExport(basePath, currentPath, stream, format, allowedExtSet, ignoredItemsSet, maxSizePerFile, updateStats, depth = 0) {
+async function walkAndExport(basePath, currentPath, stream, format, allowedExtSet, ignoredItemsSet, maxSizePerFile, updateStats, options, depth = 0) {
     let dirents;
     try {
         dirents = await fsp.readdir(currentPath, { withFileTypes: true });
@@ -268,7 +268,7 @@ async function walkAndExport(basePath, currentPath, stream, format, allowedExtSe
              if (format === 'xml') stream.write(`${'  '.repeat(depth + 1)}<directory name="${escapeXml(itemName)}" path="${escapeXml(relativePath)}">\n`);
              else if (format === 'structure') stream.write(`${prefix}${itemName}/\n`);
 
-            await walkAndExport(basePath, itemPath, stream, format, allowedExtSet, ignoredItemsSet, maxSizePerFile, updateStats, depth + 1);
+            await walkAndExport(basePath, itemPath, stream, format, allowedExtSet, ignoredItemsSet, maxSizePerFile, updateStats, options, depth + 1);
 
              if (format === 'xml') stream.write(`${'  '.repeat(depth + 1)}</directory>\n`);
 
@@ -276,10 +276,8 @@ async function walkAndExport(basePath, currentPath, stream, format, allowedExtSe
             const fileExt = path.extname(itemName).toLowerCase();
             const fileNameLower = itemName.toLowerCase();
 
-            // Combine checks: is the extension in the set OR is the full lowercase name in the allowed list?
             const isAllowedExt = allowedExtSet.has(fileExt);
-            // Need the original list for includes check as Set doesn't have it
-            const isAllowedName = options.allowedExtensions.includes(fileNameLower);
+            const isAllowedName = options && options.allowedExtensions && options.allowedExtensions.includes(fileNameLower);
 
             if (isAllowedExt || isAllowedName) {
                  try {
@@ -308,15 +306,13 @@ async function walkAndExport(basePath, currentPath, stream, format, allowedExtSe
                             readError = new Error("Skipped: Binary content detected");
                         }
                      } catch(utf8Error) {
-                         // Try latin1 as fallback
                          try {
                             content = await fsp.readFile(itemPath, 'latin1');
-                             // Optional: Check for excessive null bytes in latin1 too
                             if ((content.match(/\u0000/g) || []).length > content.length * 0.1) {
                                 readError = new Error("Skipped: Binary content detected (latin1)");
                             }
                          } catch (latin1Error) {
-                             readError = utf8Error; // Use original UTF-8 error if latin1 also fails
+                             readError = utf8Error;
                          }
                      }
 
@@ -325,10 +321,8 @@ async function walkAndExport(basePath, currentPath, stream, format, allowedExtSe
                         updateStats('skipped');
                         if (format === 'md') stream.write(`\n--- ${readError.message}: ${relativePath} ---\n`);
                         else if (format === 'xml') stream.write(`${'  '.repeat(depth + 1)}<file name="${escapeXml(itemName)}" path="${escapeXml(relativePath)}" error="${escapeXml(readError.message)}"/>\n`);
-                        // Structure case handled above
                         continue;
                      }
-
 
                      if (format === 'md') {
                          const separatorStart = `\n--- File: ${relativePath} ---\n`;
@@ -347,7 +341,7 @@ async function walkAndExport(basePath, currentPath, stream, format, allowedExtSe
                      updateStats('processed');
                      updateStats('bytes', stats.size);
 
-                 } catch (statErr) { // Catch stat errors separately
+                 } catch (statErr) {
                      console.warn(`Skipping file ${itemPath} due to stat error: ${statErr.message}`);
                      updateStats('skipped');
                       if (format === 'md') stream.write(`\n--- Error accessing file: ${relativePath} (${statErr.message}) ---\n`);

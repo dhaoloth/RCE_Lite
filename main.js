@@ -295,9 +295,10 @@ ipcMain.handle('project:export', async (event, basePath) => {
 
     const baseName = path.basename(basePath);
     const defaultFileNameBase = `repo-export-${baseName}`;
-    let savePath = '';
+    let savePath = ''; // Объявляем заранее
 
     try {
+        console.log('[project:export] Step 1: Showing save dialog...'); // ЛОГ 1
         const exportDialogResult = await dialog.showSaveDialog(mainWindow, {
             title: 'Save Exported Project Content',
             defaultPath: path.join(app.getPath('documents'), `${defaultFileNameBase}.md`),
@@ -307,6 +308,7 @@ ipcMain.handle('project:export', async (event, basePath) => {
                 { name: 'Structure File (Text)', extensions: ['txt'] },
             ]
         });
+        console.log('[project:export] Step 2: Save dialog result received:', exportDialogResult); // ЛОГ 2
 
         if (exportDialogResult.canceled || !exportDialogResult.filePath) {
             console.log('[project:export] Export cancelled by user.');
@@ -314,17 +316,18 @@ ipcMain.handle('project:export', async (event, basePath) => {
         }
 
         savePath = exportDialogResult.filePath;
-        const chosenExtension = path.extname(savePath).toLowerCase();
+        console.log('[project:export] Step 3: Determined savePath:', savePath); // ЛОГ 3
 
+        const chosenExtension = path.extname(savePath).toLowerCase();
         let exportFormat = 'md';
         if (chosenExtension === '.xml') {
             exportFormat = 'xml';
         } else if (chosenExtension === '.txt') {
             exportFormat = 'structure';
         }
+        console.log('[project:export] Step 4: Determined exportFormat:', exportFormat); // ЛОГ 4
 
-        console.log(`[project:export] Exporting as ${exportFormat} to ${savePath}`);
-
+        // Опции экспорта с проверенными запятыми
         const exportOptions = {
            allowedExtensions: [
                '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.json', '.jsonc', '.json5',
@@ -332,7 +335,7 @@ ipcMain.handle('project:export', async (event, basePath) => {
                '.css', '.scss', '.sass', '.less', '.styl',
                '.md', '.markdown', '.txt', '.rtf', '.tex', '.bib',
                '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.env', '.env.*', '.pem', '.key', '.crt', '.csr',
-               '.py', '.pyw', '.rb', '.rbw', '.java', '.kt', '.kts', '.groovy', '.gvy', '.gy', '.gsh', // .class удален
+               '.py', '.pyw', '.rb', '.rbw', '.java', '.kt', '.kts', '.groovy', '.gvy', '.gy', '.gsh',
                '.c', '.cpp', '.cxx', '.h', '.hpp', '.hxx', '.cs', '.fs', '.fsi', '.fsx', '.fsscript',
                '.go', '.rs', '.swift', '.mm', '.m', '.php', '.phtml', '.php3', '.php4', '.php5', '.php7', '.phps',
                '.pl', '.pm', '.pod', '.t',
@@ -353,10 +356,9 @@ ipcMain.handle('project:export', async (event, basePath) => {
                '.nunjucks', '.njk',
                '.clj', '.cljs', '.cljc', '.edn',
                '.erl', '.hrl', '.ex', '.exs',
-               '.hs', '.lhs',
-               '.feature',
-               // JSX/TSX уже есть
-           ],
+               '.hs', '.lhs', // Запятая здесь важна
+               '.feature'     // Запятая здесь НЕ нужна (последний элемент)
+           ], // Закрывающая скобка для allowedExtensions
            ignoredItems: [
                '.git', 'node_modules', 'bower_components', 'vendor',
                'dist', 'build', 'out', 'target', 'bin', 'obj', 'Release', 'Debug',
@@ -377,27 +379,38 @@ ipcMain.handle('project:export', async (event, basePath) => {
                '*.pdf', '*.doc', '*.docx', '*.xls', '*.xlsx', '*.ppt', '*.pptx', '*.odt', '*.ods', '*.odp',
                '*.psd', '*.ai', '*.eps',
                '*.eot', '*.ttf', '*.woff', '*.woff2',
-               'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'composer.lock', 'Gemfile.lock', 'Cargo.lock', 'poetry.lock'
-           ]
-        };
+               'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'composer.lock', 'Gemfile.lock', 'Cargo.lock', 'poetry.lock' // Запятая здесь НЕ нужна (последний элемент)
+           ] // Закрывающая скобка для ignoredItems
+        }; // Закрывающая скобка для exportOptions
+        console.log('[project:export] Step 5: Export options prepared.'); // ЛОГ 5
 
+        console.log('[project:export] Step 6: Calling fileUtils.exportProject...'); // ЛОГ 6
         const status = await fileUtils.exportProject(basePath, savePath, exportFormat, exportOptions);
+        console.log('[project:export] Step 7: fileUtils.exportProject finished. Status:', status); // ЛОГ 7
 
+        console.log('[project:export] Step 8: Calling shell.showItemInFolder...'); // ЛОГ 8
         shell.showItemInFolder(savePath);
-        console.log(`[project:export] Export successful: ${status}`);
+        console.log('[project:export] Step 9: shell.showItemInFolder finished.'); // ЛОГ 9
+
+        console.log(`[project:export] Export seems successful: ${status}`);
         return { success: true, data: { message: `Project exported as ${exportFormat.toUpperCase()} to ${savePath}. ${status}` } };
 
     } catch (error) {
-        console.error("[project:export] Export failed:", error);
-        const errorContext = savePath ? ` to ${savePath}` : '';
-        // Убедимся, что mainWindow существует перед показом диалога ошибки
-        if (mainWindow) {
-             dialog.showErrorBox('Export Error', `Export failed${errorContext}: ${error.message}`);
+        console.error("--- [project:export] EXPORT FAILED (Caught in main.js) ---");
+        // Преобразуем ошибку в строку для надежной передачи через IPC
+        const errorMessageString = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        console.error("Original Error Object:", error); // Логируем исходный объект для себя
+        console.error("Error Message String:", errorMessageString); // Логируем строку, которую вернем
+        if (error instanceof Error) {
+             console.error("Error Stack:", error.stack); // Логируем стек, если это стандартная ошибка
         }
-        return { success: false, error: { message: `Export failed${errorContext}: ${error.message}` } };
+        console.error("--- End Export Error ---");
+
+        const errorContext = savePath ? ` to ${savePath}` : '';
+        // Возвращаем только строку сообщения в поле message
+        return { success: false, error: { message: `Export failed${errorContext}: ${errorMessageString}` } };
     }
-});
-// --- КОНЕЦ ОБРАБОТЧИКА ЭКСПОРТА ---
+}); // Конец обработчика ipcMain.handle для project:export
 
 async function findRepositories(dirPath, maxDepth = 5, currentDepth = 0) { // Добавил параметры по умолчанию
     if (currentDepth > maxDepth) {
